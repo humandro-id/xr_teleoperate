@@ -3,8 +3,8 @@ import argparse
 from multiprocessing import Value, Array, Lock
 import threading
 import logging_mp
-logging_mp.basic_config(level=logging_mp.INFO)
-logger_mp = logging_mp.get_logger(__name__)
+logging_mp.basicConfig(level=logging_mp.INFO)
+logger_mp = logging_mp.getLogger(__name__)
 
 import os 
 import sys
@@ -252,7 +252,7 @@ if __name__ == '__main__':
             listen_keyboard_thread.start()
 
         # image client
-        img_client = ImageClient(host=args.img_server_ip, request_bgr=True)
+        img_client = ImageClient(host=args.img_server_ip)
         camera_config = img_client.get_cam_config()
         logger_mp.debug(f"Camera config: {camera_config}")
         xr_need_local_img = not (args.display_mode == 'pass-through' or camera_config['head_camera']['enable_webrtc'])
@@ -308,8 +308,8 @@ if __name__ == '__main__':
             dual_hand_data_lock = Lock()
             dual_hand_state_array = Array('d', 14, lock = False)   # [output] current left, right hand state(14) data.
             dual_hand_action_array = Array('d', 14, lock = False)  # [output] current left, right hand action(14) data.
-            hand_ctrl = Dex3_1_Controller(left_hand_pos_array, right_hand_pos_array, dual_hand_data_lock, 
-                                          dual_hand_state_array, dual_hand_action_array, simulation_mode=args.sim, xr_motion_data_ready_in=xr_motion_data_ready)
+            #hand_ctrl = Dex3_1_Controller(left_hand_pos_array, right_hand_pos_array, dual_hand_data_lock, 
+            #                              dual_hand_state_array, dual_hand_action_array, simulation_mode=args.sim, xr_motion_data_ready_in=xr_motion_data_ready)
         elif args.ee == "dex1":
             from teleop.robot_control.robot_hand_unitree import Dex1_1_Gripper_Controller
             left_gripper_value = Value('d', 0.0, lock=True)        # [input]
@@ -397,11 +397,13 @@ if __name__ == '__main__':
 
         # record + headless / non-headless mode
         if args.record:
+            head_h, head_w = camera_config['head_camera']['image_shape']
             recorder = EpisodeWriter(task_dir = os.path.join(args.task_dir, args.task_name),
                                      task_goal = args.task_goal,
                                      task_desc = args.task_desc,
                                      task_steps = args.task_steps,
-                                     frequency = args.frequency, 
+                                     frequency = args.frequency,
+                                     image_size = [head_w, head_h],
                                      rerun_log = False)
 
         logger_mp.info("----------------------------------------------------------------")
@@ -427,9 +429,9 @@ if __name__ == '__main__':
                 # Evita que el script se detenga si los primeros frames de tele_data vienen vacíos
                 pass
             if camera_config['head_camera']['enable_zmq'] and xr_need_local_img:
-                head_img = img_client.get_head_frame()
-                if head_img.bgr is not None:
-                    tv_wrapper.render_to_xr(head_img.bgr)
+                head_img, _ = img_client.get_head_frame()
+                if head_img is not None:
+                    tv_wrapper.render_to_xr(head_img)
 
         logger_mp.info("---------------------🚀start Tracking🚀-------------------------")
         arm_ctrl.speed_gradual_max()
@@ -444,15 +446,15 @@ if __name__ == '__main__':
             # get image
             if camera_config['head_camera']['enable_zmq']:
                 if args.record or xr_need_local_img:
-                    head_img = img_client.get_head_frame()
-                if xr_need_local_img and head_img.bgr is not None:
-                    tv_wrapper.render_to_xr(head_img.bgr)
+                    head_img, _ = img_client.get_head_frame()
+                if xr_need_local_img and head_img is not None:
+                    tv_wrapper.render_to_xr(head_img)
             if camera_config['left_wrist_camera']['enable_zmq']:
                 if args.record:
-                    left_wrist_img = img_client.get_left_wrist_frame()
+                    left_wrist_img, _ = img_client.get_left_wrist_frame()
             if camera_config['right_wrist_camera']['enable_zmq']:
                 if args.record:
-                    right_wrist_img = img_client.get_right_wrist_frame()
+                    right_wrist_img, _ = img_client.get_right_wrist_frame()
 
             # record mode
             if args.record and RECORD_TOGGLE:
@@ -596,26 +598,20 @@ if __name__ == '__main__':
                     colors = {}
                     depths = {}
                     color_idx = 0
-                    if head_img is not None and head_img.bgr is not None:
-                        head_bgr = head_img.bgr
-                        head_mono_w = camera_config['head_camera']['image_shape'][1] // 2
-                        # RealSense head stream may still be side-by-side stereo over ZMQ.
-                        if head_bgr.shape[1] >= 2 * head_mono_w:
-                            colors[f"color_{color_idx}"] = head_bgr[:, :head_mono_w]
-                        else:
-                            colors[f"color_{color_idx}"] = head_bgr
+                    if head_img is not None:
+                        colors[f"color_{color_idx}"] = head_img.copy()
                         color_idx += 1
                     else:
                         logger_mp.warning("Head image is None!")
                     if camera_config['left_wrist_camera']['enable_zmq']:
                         if left_wrist_img is not None:
-                            colors[f"color_{color_idx}"] = left_wrist_img.bgr
+                            colors[f"color_{color_idx}"] = left_wrist_img.copy()
                             color_idx += 1
                         else:
                             logger_mp.warning("Left wrist image is None!")
                     if camera_config['right_wrist_camera']['enable_zmq']:
                         if right_wrist_img is not None:
-                            colors[f"color_{color_idx}"] = right_wrist_img.bgr
+                            colors[f"color_{color_idx}"] = right_wrist_img.copy()
                             color_idx += 1
                         else:
                             logger_mp.warning("Right wrist image is None!")
