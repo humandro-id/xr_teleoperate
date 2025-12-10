@@ -17,7 +17,7 @@ kTopicInspireDFXState = "rt/inspire/state"
 
 class Inspire_Controller_DFX:
     def __init__(self, left_hand_array, right_hand_array, dual_hand_data_lock = None, dual_hand_state_array = None,
-                       dual_hand_action_array = None, fps = 100.0, Unit_Test = False, simulation_mode = False):
+                       dual_hand_action_array = None, fps = 100.0, Unit_Test = False, simulation_mode = False, dds_interface: str = "enp39s0"):
         logger_mp.info("Initialize Inspire_Controller_DFX...")
         self.fps = fps
         self.Unit_Test = Unit_Test
@@ -31,12 +31,14 @@ class Inspire_Controller_DFX:
         # MUST specify network interface for inter-process communication!
         try:
             if self.simulation_mode:
-                ChannelFactoryInitialize(1, "enp39s0")  # same network interface for same-host communication
+                ChannelFactoryInitialize(1, dds_interface)  # same network interface for same-host communication
+                logger_mp.info(f"[Inspire_Controller_DFX] DDS init simulation mode on domain 1 iface '{dds_interface}'")
             else:
-                ChannelFactoryInitialize(0)  # real robot uses default interface
+                ChannelFactoryInitialize(0, dds_interface)  # real robot uses specified/default interface
+                logger_mp.info(f"[Inspire_Controller_DFX] DDS init real robot on domain 0 iface '{dds_interface}'")
         except Exception as e:
             # Already initialized - this is fine
-            pass
+            logger_mp.info(f"[Inspire_Controller_DFX] ChannelFactoryInitialize skipped/failed: {e}")
 
         # initialize handcmd publisher and handstate subscriber
         self.HandCmb_publisher = ChannelPublisher(kTopicInspireDFXCommand, MotorCmds_)
@@ -54,11 +56,18 @@ class Inspire_Controller_DFX:
         self.subscribe_state_thread.daemon = True
         self.subscribe_state_thread.start()
 
+        # Wait for initial DDS messages
+        wait_count = 0
         while True:
-            if any(self.right_hand_state_array): # any(self.left_hand_state_array) and 
+            if any(self.right_hand_state_array): # any(self.left_hand_state_array) and
                 break
             time.sleep(0.01)
-            logger_mp.warning("[Inspire_Controller_DFX] Waiting to subscribe dds...")
+            wait_count += 1
+            if wait_count % 100 == 0:
+                logger_mp.warning("[Inspire_Controller_DFX] Waiting to subscribe dds (no states yet)...")
+            if wait_count > 500:  # 5s timeout
+                logger_mp.warning("[Inspire_Controller_DFX] Timeout waiting for initial hand states, proceeding anyway.")
+                break
         logger_mp.info("[Inspire_Controller_DFX] Subscribe dds ok.")
 
         hand_control_process = Process(target=self.control_process, args=(left_hand_array, right_hand_array,  self.left_hand_state_array, self.right_hand_state_array,
@@ -69,13 +78,20 @@ class Inspire_Controller_DFX:
         logger_mp.info("Initialize Inspire_Controller_DFX OK!")
 
     def _subscribe_hand_state(self):
+        logger_mp.info("[Inspire_Controller_DFX] Subscribe thread started.")
+        miss_count = 0
         while True:
             hand_msg  = self.HandState_subscriber.Read()
             if hand_msg is not None:
+                miss_count = 0
                 for idx, id in enumerate(Inspire_Left_Hand_JointIndex):
                     self.left_hand_state_array[idx] = hand_msg.states[id].q
                 for idx, id in enumerate(Inspire_Right_Hand_JointIndex):
                     self.right_hand_state_array[idx] = hand_msg.states[id].q
+            else:
+                miss_count += 1
+                if miss_count % 500 == 0:
+                    logger_mp.warning("[Inspire_Controller_DFX] No hand state messages received yet.")
             time.sleep(0.002)
 
     def ctrl_dual_hand(self, left_q_target, right_q_target):
@@ -185,7 +201,7 @@ class Inspire_Controller_FTP:
         # MUST specify network interface for inter-process communication!
         try:
             if self.simulation_mode:
-                ChannelFactoryInitialize(1, "enp39s0")  # same network interface for same-host communication
+                ChannelFactoryInitialize(1)  # same network interface for same-host communication
             else:
                 ChannelFactoryInitialize(0)  # real robot uses default interface
         except Exception as e:
