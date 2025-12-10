@@ -337,7 +337,8 @@ if __name__ == '__main__':
 
             # get xr's tele data
             tele_data = tv_wrapper.get_tele_data()
-            if (args.ee == "dex3" or args.ee == "inspire1" or args.ee == "brainco") and args.input_mode == "hand":
+            # actualizar buffers de mano para efectores finales de mano
+            if args.ee in ("dex3", "inspire_dfx", "inspire_ftp", "brainco") and args.input_mode == "hand":
                 with left_hand_pos_array.get_lock():
                     left_hand_pos_array[:] = tele_data.left_hand_pos.flatten()
                 with right_hand_pos_array.get_lock():
