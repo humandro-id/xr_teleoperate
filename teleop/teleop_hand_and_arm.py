@@ -182,7 +182,10 @@ if __name__ == '__main__':
             try:
                 # Use primary network interface for DDS communication
                 # Both processes on same host will communicate through this interface
-                ChannelFactoryInitialize(1, "enp39s0")
+                #ChannelFactoryInitialize(1, "enp39s0")
+                dds_iface = os.getenv("DDS_INTERFACE", "enp39s0")
+                ChannelFactoryInitialize(1, dds_iface)
+                logger_mp.info(f"✅ DDS domain 1 initialized for simulation (interface: {dds_iface})")
                 logger_mp.info("✅ DDS domain 1 initialized for simulation (interface: enp39s0)")
             except Exception as e:
                 logger_mp.warning(f"ChannelFactoryInitialize note: {e}")
