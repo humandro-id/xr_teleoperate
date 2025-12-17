@@ -86,6 +86,7 @@ class G1_29_ArmController:
         # MUST specify network interface for inter-process communication!
         try:
             if self.simulation_mode:
+                logger_mp.warning("[G1_29_ArmController] Into de simulation mode")
                 dds_iface = os.getenv("DDS_INTERFACE", "enp39s0")
                 ChannelFactoryInitialize(1, dds_iface)  # same network interface for same-host communication
             else:
@@ -96,6 +97,7 @@ class G1_29_ArmController:
         if self.motion_mode:
             self.lowcmd_publisher = ChannelPublisher(kTopicLowCommand_Motion, hg_LowCmd)
         else:
+            logger_mp.warning("[G1_29_ArmController] Into de publisher")
             self.lowcmd_publisher = ChannelPublisher(kTopicLowCommand_Debug, hg_LowCmd)
         self.lowcmd_publisher.Init()
         self.lowstate_subscriber = ChannelSubscriber(kTopicLowState, hg_LowState)
