@@ -91,8 +91,7 @@ class G1_29_ArmController:
             else:
                 ChannelFactoryInitialize(0)  # real robot uses default interface
         except Exception as e:
-            # May already be initialized - that's okay
-            pass
+            logger_mp.warning("[G1_29_ArmController] Failed to inicialize DDS interface")
 
         if self.motion_mode:
             self.lowcmd_publisher = ChannelPublisher(kTopicLowCommand_Motion, hg_LowCmd)
