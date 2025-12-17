@@ -12,6 +12,7 @@ from unitree_sdk2py.idl.unitree_go.msg.dds_ import ( LowCmd_  as go_LowCmd, LowS
 from unitree_sdk2py.idl.default import unitree_go_msg_dds__LowCmd_
 
 import logging_mp
+import os
 logger_mp = logging_mp.get_logger(__name__)
 
 kTopicLowCommand_Debug  = "rt/lowcmd"
@@ -85,7 +86,8 @@ class G1_29_ArmController:
         # MUST specify network interface for inter-process communication!
         try:
             if self.simulation_mode:
-                ChannelFactoryInitialize(1, "enp39s0")  # same network interface for same-host communication
+                dds_iface = os.getenv("DDS_INTERFACE", "enp39s0")
+                ChannelFactoryInitialize(1, dds_iface)  # same network interface for same-host communication
             else:
                 ChannelFactoryInitialize(0)  # real robot uses default interface
         except Exception as e:
