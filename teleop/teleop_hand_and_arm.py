@@ -24,6 +24,11 @@ from teleop.utils.ipc import IPC_Server
 from teleop.utils.motion_switcher import MotionSwitcher, LocoClientWrapper
 from sshkeyboard import listen_keyboard, stop_listening
 
+import asyncio
+import json
+from nats.aio.client import Client as NATS
+
+
 try:
     import omni.replicator.core as rep
     import omni.timeline
@@ -72,6 +77,16 @@ RECORD_TOGGLE  = False  # Toggle recording state
 #  ==> manual: when READY is True, set RECORD_TOGGLE=True to transition.
 #  --> auto  : Auto-transition after saving data.
 
+def nats_to_on_press(cmd: str):
+    if cmd == "START":
+        on_press("r")
+    elif cmd == "RECORD_TOGGLE":
+        on_press("s")
+    elif cmd == "STOP":
+        on_press("q")
+    else:
+        logger_mp.warning(f"[NATS] Unknown cmd: {cmd}")
+
 def on_press(key):
     global STOP, START, RECORD_TOGGLE
     if key == 'r':
@@ -93,6 +108,29 @@ def get_state() -> dict:
         "READY": READY,
         "RECORD_RUNNING": RECORD_RUNNING,
     }
+
+async def nats_listener():
+    nc = NATS()
+    servers = os.getenv("NATS_SERVERS", "nats://0.0.0.0:4222")
+
+    await nc.connect(servers)
+    logger_mp.info(f"🟢 Connected to NATS at {servers}")
+
+    async def handler(msg):
+        subject = msg.subject
+        logger_mp.info(f"[NATS] msg on {subject}")
+
+        if subject == "teleop.cmd":
+            nats_to_on_press("START")
+        elif subject == "teleop.cmd.record_toggle":
+            nats_to_on_press("RECORD_TOGGLE")
+        elif subject == "teleop.cmd.stop":
+            nats_to_on_press("STOP")
+
+    await nc.subscribe("teleop.cmd", cb=handler)
+
+    while True:
+        await asyncio.sleep(1)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -116,21 +154,35 @@ if __name__ == '__main__':
     parser.add_argument('--task-goal', type = str, default = 'pick up cube.', help = 'task goal for recording at json file')
     parser.add_argument('--task-desc', type = str, default = 'task description', help = 'task description for recording at json file')
     parser.add_argument('--task-steps', type = str, default = 'step1: do this; step2: do that;', help = 'task steps for recording at json file')
+    parser.add_argument('--debug',action='store_true',help='Enable keyboard / IPC input (disable NATS)')
 
     args = parser.parse_args()
     logger_mp.info(f"args: {args}")
 
     try:
         # ipc communication mode. client usage: see utils/ipc.py
-        if args.ipc:
-            ipc_server = IPC_Server(on_press=on_press,get_state=get_state)
-            ipc_server.start()
-        # sshkeyboard communication mode
+        if args.debug:
+            if args.ipc:
+                ipc_server = IPC_Server(on_press=on_press,get_state=get_state)
+                ipc_server.start()
+            # sshkeyboard communication mode
+            else:
+                listen_keyboard_thread = threading.Thread(target=listen_keyboard, 
+                                                          kwargs={"on_press": on_press, "until": None, "sequential": False,}, 
+                                                          daemon=True)
+                listen_keyboard_thread.start()
+        
         else:
-            listen_keyboard_thread = threading.Thread(target=listen_keyboard, 
-                                                      kwargs={"on_press": on_press, "until": None, "sequential": False,}, 
-                                                      daemon=True)
-            listen_keyboard_thread.start()
+            logger_mp.info("🚀 NATS control mode (default)")
+
+            def start_nats():
+                asyncio.run(nats_listener())
+
+            nats_thread = threading.Thread(
+                target=start_nats,
+                daemon=True
+            )
+            nats_thread.start()
 
         # image client
         img_client = ImageClient(host=args.img_server_ip)
