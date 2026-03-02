@@ -80,8 +80,10 @@ RIGHT_HAPTICS_JOINTS = [
 ]
 NUM_HAPTICS_JOINTS = 9
 
-LEFT_HAPTICS_TOPIC  = '/senseglove/glove00801/lh/haptics_controller/joint_trajectory'
-RIGHT_HAPTICS_TOPIC = '/senseglove/glove00804/rh/haptics_controller/joint_trajectory'
+#LEFT_HAPTICS_TOPIC  = '/senseglove/glove00801/lh/haptics_controller/joint_trajectory'
+#RIGHT_HAPTICS_TOPIC = '/senseglove/glove00804/rh/haptics_controller/joint_trajectory'
+LEFT_HAPTICS_TOPIC  = '/senseglove/glove00801/lh/haptics_commands'
+RIGHT_HAPTICS_TOPIC = '/senseglove/glove00804/rh/haptics_commands'
 
 # Inspire DOF → SenseGlove brake index mapping
 # Inspire: [0:pinky, 1:ring, 2:middle, 3:index, 4:thumb_bend, 5:thumb_rot]
@@ -94,8 +96,9 @@ INSPIRE_TO_BRAKE = {
 }
 
 # Inspire force_act: 0–4096.  Dead zone below 200, full brake at 4096.
-HAPTIC_FORCE_DEADZONE = 200.0
-HAPTIC_FORCE_MAX = 4096.0
+HAPTIC_FORCE_DEADZONE = 200
+HAPTIC_FORCE_MAX = 4096# Inspire force_act: 0–4096.  Dead zone below 200, full brake at 4096.
+
 
 
 
@@ -114,13 +117,9 @@ class SenseGloveROS2Bridge:
         import rclpy
         from rclpy.qos import QoSProfile, ReliabilityPolicy
         from sensor_msgs.msg import JointState
-        from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
-        from builtin_interfaces.msg import Duration
+        from std_msgs.msg import Float64MultiArray
 
         self._rclpy = rclpy
-        self._JointTrajectory = JointTrajectory
-        self._JointTrajectoryPoint = JointTrajectoryPoint
-        self._Duration = Duration
 
         if not rclpy.ok():
             rclpy.init()
@@ -140,11 +139,11 @@ class SenseGloveROS2Bridge:
             JointState, right_topic, self._cb_right, 10)
 
         # ── Haptic feedback publishers ──
-        qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
+        qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE) # BEST_EFFORT
         self._left_haptics_pub = self._node.create_publisher(
-            JointTrajectory, LEFT_HAPTICS_TOPIC, qos)
+            Float64MultiArray, LEFT_HAPTICS_TOPIC, qos)
         self._right_haptics_pub = self._node.create_publisher(
-            JointTrajectory, RIGHT_HAPTICS_TOPIC, qos)
+            Float64MultiArray, RIGHT_HAPTICS_TOPIC, qos)
 
         # Timer for haptic feedback at 20 Hz
         if left_force_array is not None:
@@ -216,12 +215,8 @@ class SenseGloveROS2Bridge:
         return brakes
 
     def _build_haptics_msg(self, joint_names, values):
-        msg = self._JointTrajectory()
-        msg.joint_names = list(joint_names)
-        pt = self._JointTrajectoryPoint()
-        pt.positions = values
-        pt.time_from_start = self._Duration(sec=0, nanosec=50_000_000)
-        msg.points = [pt]
+        msg = self.Float64MultiArray()
+        msg.data = list(joint_names)
         return msg
 
     # ---- joint mapping ----------------------------------------------------
