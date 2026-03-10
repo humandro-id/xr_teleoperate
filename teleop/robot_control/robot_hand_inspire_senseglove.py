@@ -21,6 +21,7 @@ import threading
 import time
 from multiprocessing import Process, Array
 
+from std_msgs.msg import Float64MultiArray
 import logging_mp
 logger_mp = logging_mp.get_logger(__name__)
 
@@ -117,7 +118,6 @@ class SenseGloveROS2Bridge:
         import rclpy
         from rclpy.qos import QoSProfile, ReliabilityPolicy
         from sensor_msgs.msg import JointState
-        from std_msgs.msg import Float64MultiArray
 
         self._rclpy = rclpy
 
@@ -215,7 +215,7 @@ class SenseGloveROS2Bridge:
         return brakes
 
     def _build_haptics_msg(self, joint_names, values):
-        msg = self.Float64MultiArray()
+        msg = Float64MultiArray()
         msg.data = list(values)
         return msg
 
