@@ -81,8 +81,8 @@ if __name__ == '__main__':
     parser.add_argument('--display-mode', type=str, choices=['immersive', 'ego', 'pass-through'], default='immersive', help='Select XR device display mode')
     parser.add_argument('--arm', type=str, choices=['G1_29', 'G1_23', 'H1_2', 'H1'], default='G1_29', help='Select arm controller')
     parser.add_argument('--ee', type=str, choices=['dex1', 'dex3', 'inspire_ftp', 'inspire_dfx', 'inspire_ftp_sg', 'brainco'], help='Select end effector controller')
-    parser.add_argument('--left-glove-topic', type=str, default='/senseglove/glove00801/lh/joint_states', help='ROS2 topic for left SenseGlove joint_states')
-    parser.add_argument('--right-glove-topic', type=str, default='/senseglove/glove00804/rh/joint_states', help='ROS2 topic for right SenseGlove joint_states')
+    parser.add_argument('--left-glove-topic', type=str, default='/senseglove/glove00799/lh/joint_states', help='ROS2 topic for left SenseGlove joint_states')
+    parser.add_argument('--right-glove-topic', type=str, default='/senseglove/glove00768/rh/joint_states', help='ROS2 topic for right SenseGlove joint_states')
     parser.add_argument('--img-server-ip', type=str, default='192.168.123.164', help='IP address of image server, used by teleimager and televuer')
     # mode flags
     parser.add_argument('--motion', action = 'store_true', help = 'Enable motion control mode')
@@ -190,6 +190,7 @@ if __name__ == '__main__':
             dual_hand_data_lock = Lock()
             dual_hand_state_array = Array('d', 12, lock = False)   # [output] current left, right hand state(12) data.
             dual_hand_action_array = Array('d', 12, lock = False)  # [output] current left, right hand action(12) data.
+            logger_mp.info("Por entrar al inspire controller SenseGlove")
             hand_ctrl = Inspire_Controller_SenseGlove(
                 dual_hand_data_lock=dual_hand_data_lock,
                 dual_hand_state_array=dual_hand_state_array,

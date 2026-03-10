@@ -31,8 +31,8 @@ kTopicInspireFTPRightCommand = "rt/inspire_hand/ctrl/r"
 kTopicInspireFTPLeftState    = "rt/inspire_hand/state/l"
 kTopicInspireFTPRightState   = "rt/inspire_hand/state/r"
 
-DEFAULT_LEFT_GLOVE_TOPIC  = "/senseglove/glove00801/lh/joint_states"
-DEFAULT_RIGHT_GLOVE_TOPIC = "/senseglove/glove00804/rh/joint_states"
+DEFAULT_LEFT_GLOVE_TOPIC  = "/senseglove/glove00799/lh/joint_states"
+DEFAULT_RIGHT_GLOVE_TOPIC = "/senseglove/glove00768/rh/joint_states"
 
 # Typical max flexion (rad) per finger for the SenseGlove Nova 2.
 # Tune these if the mapping feels too sensitive or too sluggish.
@@ -82,8 +82,8 @@ NUM_HAPTICS_JOINTS = 9
 
 #LEFT_HAPTICS_TOPIC  = '/senseglove/glove00801/lh/haptics_controller/joint_trajectory'
 #RIGHT_HAPTICS_TOPIC = '/senseglove/glove00804/rh/haptics_controller/joint_trajectory'
-LEFT_HAPTICS_TOPIC  = '/senseglove/glove00801/lh/haptics_commands'
-RIGHT_HAPTICS_TOPIC = '/senseglove/glove00804/rh/haptics_commands'
+LEFT_HAPTICS_TOPIC  = '/senseglove/glove00799/lh/haptics_commands'
+RIGHT_HAPTICS_TOPIC = '/senseglove/glove00768/rh/haptics_commands'
 
 # Inspire DOF → SenseGlove brake index mapping
 # Inspire: [0:pinky, 1:ring, 2:middle, 3:index, 4:thumb_bend, 5:thumb_rot]
@@ -216,7 +216,7 @@ class SenseGloveROS2Bridge:
 
     def _build_haptics_msg(self, joint_names, values):
         msg = self.Float64MultiArray()
-        msg.data = list(joint_names)
+        msg.data = list(values)
         return msg
 
     # ---- joint mapping ----------------------------------------------------
@@ -376,11 +376,14 @@ class Inspire_Controller_SenseGlove:
                     arr[i] = 1.0  # open
 
         # ---- ROS2 SenseGlove subscriber + haptic publisher -----------------
-        self.ros2_bridge = SenseGloveROS2Bridge(
-            left_glove_topic, right_glove_topic,
-            self.sg_left_mapped, self.sg_right_mapped,
-            self.left_hand_force_array, self.right_hand_force_array,
-        )
+        try:
+            self.ros2_bridge = SenseGloveROS2Bridge(
+                left_glove_topic, right_glove_topic,
+                self.sg_left_mapped, self.sg_right_mapped,
+                self.left_hand_force_array, self.right_hand_force_array,
+            )
+        except Exception as e:
+            print(e)
 
         # ---- DDS state subscriber thread ----------------------------------
         self._state_thread = threading.Thread(
