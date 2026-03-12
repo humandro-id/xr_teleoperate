@@ -98,11 +98,11 @@ INSPIRE_TO_BRAKE = {
 
 # Inspire force_act: 0–4096.  Dead zone below 200, full brake at 4096.
 HAPTIC_FORCE_DEADZONE = 200
-HAPTIC_FORCE_MAX = 3200# Inspire force_act: 0–4096.  Dead zone below 200, full brake at 4096.
+HAPTIC_FORCE_MAX = 3300# Inspire force_act: 0–4096.  Dead zone below 200, full brake at 4096.
 
 # REotation functions for headset controllers
-SG_MOUNT_OFFSET_EULER_DEG_RIGHT = (-90.0, 0.0, 0.0)   # (rx, ry, rz)
-SG_MOUNT_OFFSET_EULER_DEG_LEFT = (90.0, 0.0, 0.0)   # (rx, ry, rz)
+SG_MOUNT_OFFSET_EULER_DEG_RIGHT = (-135.0, 0.0, 0.0)   # (rx, ry, rz)
+SG_MOUNT_OFFSET_EULER_DEG_LEFT = (135.0, 0.0, 0.0)   # (rx, ry, rz)
 SG_MOUNT_OFFSET_EULER_DEG = (-45.0, 0.0, 0.0)   # (rx, ry, rz)
 SG_MOUNT_OFFSET_POS = (0.0, 0.0, 0.0)            # (x, y, z) in metres
 
