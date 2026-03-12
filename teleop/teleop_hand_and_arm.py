@@ -17,7 +17,7 @@ from teleop.robot_control.robot_arm import G1_29_ArmController, G1_23_ArmControl
 from teleop.robot_control.robot_arm_ik import G1_29_ArmIK, G1_23_ArmIK, H1_2_ArmIK, H1_ArmIK
 from teleop.robot_control.robot_hand_unitree import Dex3_1_Controller, Dex1_1_Gripper_Controller
 from teleop.robot_control.robot_hand_inspire import Inspire_Controller_DFX, Inspire_Controller_FTP
-from teleop.robot_control.robot_hand_inspire_senseglove import Inspire_Controller_SenseGlove
+from teleop.robot_control.robot_hand_inspire_senseglove import Inspire_Controller_SenseGlove, apply_senseglove_mount_offset
 from teleop.robot_control.robot_hand_brainco import Brainco_Controller
 from teleimager.image_client import ImageClient
 from teleop.utils.episode_writer import EpisodeWriter
@@ -287,6 +287,8 @@ if __name__ == '__main__':
 
             # get xr's tele data
             tele_data = tv_wrapper.get_tele_data()
+            left_wrist = tele_data.left_wrist_pose
+            right_wrist = tele_data.right_wrist_pose
             if (args.ee == "dex3" or args.ee == "inspire_ftp" or args.ee == "inspire_dfx" or args.ee == "brainco") and args.input_mode == "hand":
                 with left_hand_pos_array.get_lock():
                     left_hand_pos_array[:] = tele_data.left_hand_pos.flatten()
@@ -303,7 +305,9 @@ if __name__ == '__main__':
                 with right_gripper_value.get_lock():
                     right_gripper_value.value = tele_data.right_hand_pinchValue
             elif args.ee == "inspire_ftp_sg":
-                pass  # SenseGlove data arrives independently via ROS2
+                left_wrist = apply_senseglove_mount_offset(left_wrist, is_right=False)
+                right_wrist = apply_senseglove_mount_offset(right_wrist)
+                #pass  # SenseGlove data arrives independently via ROS2
             else:
                 pass
             
@@ -327,7 +331,7 @@ if __name__ == '__main__':
 
             # solve ik using motor data and wrist pose, then use ik results to control arms.
             time_ik_start = time.time()
-            sol_q, sol_tauff  = arm_ik.solve_ik(tele_data.left_wrist_pose, tele_data.right_wrist_pose, current_lr_arm_q, current_lr_arm_dq)
+            sol_q, sol_tauff  = arm_ik.solve_ik(left_wrist, right_wrist, current_lr_arm_q, current_lr_arm_dq)
             time_ik_end = time.time()
             logger_mp.debug(f"ik:\t{round(time_ik_end - time_ik_start, 6)}")
             arm_ctrl.ctrl_dual_arm(sol_q, sol_tauff)

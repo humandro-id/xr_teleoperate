@@ -100,7 +100,41 @@ INSPIRE_TO_BRAKE = {
 HAPTIC_FORCE_DEADZONE = 200
 HAPTIC_FORCE_MAX = 3200# Inspire force_act: 0–4096.  Dead zone below 200, full brake at 4096.
 
+# REotation functions for headset controllers
+SG_MOUNT_OFFSET_EULER_DEG_RIGHT = (-90.0, 0.0, 0.0)   # (rx, ry, rz)
+SG_MOUNT_OFFSET_EULER_DEG_LEFT = (90.0, 0.0, 0.0)   # (rx, ry, rz)
+SG_MOUNT_OFFSET_EULER_DEG = (-45.0, 0.0, 0.0)   # (rx, ry, rz)
+SG_MOUNT_OFFSET_POS = (0.0, 0.0, 0.0)            # (x, y, z) in metres
 
+def _euler_to_se3(rx_deg, ry_deg, rz_deg, tx=0.0, ty=0.0, tz=0.0):
+    """Build a 4x4 SE(3) matrix from Euler angles (XYZ intrinsic) + translation."""
+    rx, ry, rz = np.radians(rx_deg), np.radians(ry_deg), np.radians(rz_deg)
+    cx, sx = np.cos(rx), np.sin(rx)
+    cy, sy = np.cos(ry), np.sin(ry)
+    cz, sz = np.cos(rz), np.sin(rz)
+    Rx = np.array([[1, 0, 0], [0, cx, -sx], [0, sx, cx]])
+    Ry = np.array([[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]])
+    Rz = np.array([[cz, -sz, 0], [sz, cz, 0], [0, 0, 1]])
+    R = Rz @ Ry @ Rx
+    T = np.eye(4)
+    T[:3, :3] = R
+    T[:3, 3] = [tx, ty, tz]
+    return T
+
+SG_MOUNT_OFFSET_RIGHT = _euler_to_se3(
+    *SG_MOUNT_OFFSET_EULER_DEG_RIGHT, *SG_MOUNT_OFFSET_POS
+)
+
+SG_MOUNT_OFFSET_LEFT = _euler_to_se3(
+    *SG_MOUNT_OFFSET_EULER_DEG_LEFT, *SG_MOUNT_OFFSET_POS
+)
+
+def apply_senseglove_mount_offset(wrist_pose, is_right = True):
+    """Apply SenseGlove controller mount compensation to a 4x4 wrist pose."""
+    if is_right:
+        return wrist_pose @ SG_MOUNT_OFFSET_RIGHT
+    else:
+        return wrist_pose @ SG_MOUNT_OFFSET_LEFT
 
 
 # ---------------------------------------------------------------------------
