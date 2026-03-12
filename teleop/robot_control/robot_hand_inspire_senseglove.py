@@ -98,7 +98,7 @@ INSPIRE_TO_BRAKE = {
 
 # Inspire force_act: 0–4096.  Dead zone below 200, full brake at 4096.
 HAPTIC_FORCE_DEADZONE = 200
-HAPTIC_FORCE_MAX = 4096# Inspire force_act: 0–4096.  Dead zone below 200, full brake at 4096.
+HAPTIC_FORCE_MAX = 3200# Inspire force_act: 0–4096.  Dead zone below 200, full brake at 4096.
 
 
 
