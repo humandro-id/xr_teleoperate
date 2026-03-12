@@ -116,7 +116,7 @@ class SenseGloveROS2Bridge:
                  left_mapped_array, right_mapped_array,
                  left_force_array=None, right_force_array=None):
         import rclpy
-        from rclpy.qos import QoSProfile, ReliabilityPolicy
+        from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
         from sensor_msgs.msg import JointState
 
         self._rclpy = rclpy
@@ -133,13 +133,17 @@ class SenseGloveROS2Bridge:
         self._names_logged_r = False
 
         # ── Finger tracking subscribers ──
+        qos = QoSProfile(
+            depth=1,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            history=HistoryPolicy.KEEP_LAST,
+        )
         self._node.create_subscription(
-            JointState, left_topic, self._cb_left, 10)
+            JointState, left_topic, self._cb_left, qos)
         self._node.create_subscription(
-            JointState, right_topic, self._cb_right, 10)
+            JointState, right_topic, self._cb_right, qos)
 
         # ── Haptic feedback publishers ──
-        qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE) # BEST_EFFORT
         self._left_haptics_pub = self._node.create_publisher(
             Float64MultiArray, LEFT_HAPTICS_TOPIC, qos)
         self._right_haptics_pub = self._node.create_publisher(
