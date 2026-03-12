@@ -116,7 +116,7 @@ class SenseGloveROS2Bridge:
                  left_mapped_array, right_mapped_array,
                  left_force_array=None, right_force_array=None):
         import rclpy
-        from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
+        from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, qos_profile_sensor_data
         from sensor_msgs.msg import JointState
 
         self._rclpy = rclpy
@@ -131,27 +131,31 @@ class SenseGloveROS2Bridge:
         self._right_force_arr = right_force_array
         self._names_logged_l = False
         self._names_logged_r = False
+        self._latest_left_msg = None
+        self._latest_right_msg = None
 
         # ── Finger tracking subscribers ──
-        qos = QoSProfile(
+        # SensorDataQoS: BEST_EFFORT, KEEP_LAST, depth=5, VOLATILE
+        sub_qos = qos_profile_sensor_data
+        sub_qos.depth = 1
+        self._node.create_subscription(
+            JointState, left_topic, self._cb_left, sub_qos)
+        self._node.create_subscription(
+            JointState, right_topic, self._cb_right, sub_qos)
+
+        # ── Haptic feedback publishers ──
+        pub_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.BEST_EFFORT,
             history=HistoryPolicy.KEEP_LAST,
         )
-        self._node.create_subscription(
-            JointState, left_topic, self._cb_left, qos)
-        self._node.create_subscription(
-            JointState, right_topic, self._cb_right, qos)
-
-        # ── Haptic feedback publishers ──
         self._left_haptics_pub = self._node.create_publisher(
-            Float64MultiArray, LEFT_HAPTICS_TOPIC, qos)
+            Float64MultiArray, LEFT_HAPTICS_TOPIC, pub_qos)
         self._right_haptics_pub = self._node.create_publisher(
-            Float64MultiArray, RIGHT_HAPTICS_TOPIC, qos)
+            Float64MultiArray, RIGHT_HAPTICS_TOPIC, pub_qos)
 
-        # Timer for haptic feedback at 20 Hz
-        if left_force_array is not None:
-            self._node.create_timer(0.05, self._haptics_tick)
+        # Timer to process latest SenseGlove msgs + publish haptics at 20 Hz
+        self._node.create_timer(0.05, self._process_tick)
 
         self._spin_thread = threading.Thread(target=self._spin, daemon=True)
         self._spin_thread.start()
@@ -160,43 +164,48 @@ class SenseGloveROS2Bridge:
         logger_mp.info(
             f"[SenseGloveROS2Bridge] Haptics publishing to L={LEFT_HAPTICS_TOPIC}  R={RIGHT_HAPTICS_TOPIC}")
 
-    # ---- callbacks --------------------------------------------------------
+    # ---- callbacks (lightweight: just store latest msg) --------------------
 
     def _cb_left(self, msg):
         if not self._names_logged_l:
             logger_mp.info(f"[SenseGlove L] joint names: {list(msg.name)}")
             self._names_logged_l = True
-        mapped = self._map_to_inspire(msg)
-        with self._left_arr.get_lock():
-            self._left_arr[:] = mapped
+        self._latest_left_msg = msg
 
     def _cb_right(self, msg):
         if not self._names_logged_r:
             logger_mp.info(f"[SenseGlove R] joint names: {list(msg.name)}")
             self._names_logged_r = True
-        mapped = self._map_to_inspire(msg)
-        with self._right_arr.get_lock():
-            self._right_arr[:] = mapped
+        self._latest_right_msg = msg
 
-    # ---- haptic feedback ---------------------------------------------------
+    # ---- process tick (mapping + haptics) ----------------------------------
 
-    def _haptics_tick(self):
-        """Map Inspire motor force to SenseGlove brake values and publish."""
-        if self._left_force_arr is None:
-            return
+    def _process_tick(self):
+        """Process latest SenseGlove messages and publish haptic feedback."""
+        # Map latest SenseGlove data to Inspire shared arrays
+        left_msg = self._latest_left_msg
+        if left_msg is not None:
+            mapped = self._map_to_inspire(left_msg)
+            with self._left_arr.get_lock():
+                self._left_arr[:] = mapped
 
-        with self._left_force_arr.get_lock():
-            left_force = list(self._left_force_arr[:])
-        with self._right_force_arr.get_lock():
-            right_force = list(self._right_force_arr[:])
+        right_msg = self._latest_right_msg
+        if right_msg is not None:
+            mapped = self._map_to_inspire(right_msg)
+            with self._right_arr.get_lock():
+                self._right_arr[:] = mapped
 
-        left_brakes = self._force_to_brakes(left_force)
-        right_brakes = self._force_to_brakes(right_force)
+        # Publish haptic feedback from Inspire motor forces
+        if self._left_force_arr is not None:
+            with self._left_force_arr.get_lock():
+                left_force = list(self._left_force_arr[:])
+            with self._right_force_arr.get_lock():
+                right_force = list(self._right_force_arr[:])
 
-        self._left_haptics_pub.publish(
-            self._build_haptics_msg(LEFT_HAPTICS_JOINTS, left_brakes))
-        self._right_haptics_pub.publish(
-            self._build_haptics_msg(RIGHT_HAPTICS_JOINTS, right_brakes))
+            self._left_haptics_pub.publish(
+                self._build_haptics_msg(LEFT_HAPTICS_JOINTS, self._force_to_brakes(left_force)))
+            self._right_haptics_pub.publish(
+                self._build_haptics_msg(RIGHT_HAPTICS_JOINTS, self._force_to_brakes(right_force)))
 
     @staticmethod
     def _force_to_brakes(force_act):
