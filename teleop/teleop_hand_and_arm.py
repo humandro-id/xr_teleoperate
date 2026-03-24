@@ -24,10 +24,24 @@ from teleop.utils.episode_writer import EpisodeWriter
 from teleop.utils.ipc import IPC_Server
 from teleop.utils.motion_switcher import MotionSwitcher, LocoClientWrapper
 from sshkeyboard import listen_keyboard, stop_listening
+from dotenv import load_dotenv
+import asyncio
+
+try:
+    import nats
+    NATS_AVAILABLE = True
+except ImportError:
+    NATS_AVAILABLE = False
+    print("⚠️  NATS no disponible. Instalar con: pip install nats-py")
+
+if NATS_AVAILABLE:
+    from nats.js.api import StreamConfig, RetentionPolicy, DiscardPolicy, StorageType
+
 
 # for simulation
 from unitree_sdk2py.core.channel import ChannelPublisher
 from unitree_sdk2py.idl.std_msgs.msg.dds_ import String_
+
 def publish_reset_category(category: int, publisher): # Scene Reset signal
     msg = String_(data=str(category))
     publisher.Write(msg)
@@ -39,17 +53,19 @@ STOP           = False  # Enable to begin system exit procedure
 READY          = False  # Ready to (1) enter START state, (2) enter RECORD_RUNNING state
 RECORD_RUNNING = False  # True if [Recording]
 RECORD_TOGGLE  = False  # Toggle recording state
-#  -------        ---------                -----------                -----------            ---------
-#   state          [Ready]      ==>        [Recording]     ==>         [AutoSave]     -->     [Ready]
-#  -------        ---------      |         -----------      |         -----------      |     ---------
-#   START           True         |manual      True          |manual      True          |        True
-#   READY           True         |set         False         |set         False         |auto    True
-#   RECORD_RUNNING  False        |to          True          |to          False         |        False
-#                                ∨                          ∨                          ∨
-#   RECORD_TOGGLE   False       True          False        True          False                  False
-#  -------        ---------                -----------                 -----------            ---------
-#  ==> manual: when READY is True, set RECORD_TOGGLE=True to transition.
-#  --> auto  : Auto-transition after saving data.
+js = None
+nats_client = None
+
+
+def nats_to_on_press(cmd: str):
+    if cmd == "START":
+        on_press("r")
+    elif cmd == "RECORD_TOGGLE":
+        on_press("s")
+    elif cmd == "STOP":
+        on_press("q")
+    else:
+        logger_mp.warning(f"[NATS] Unknown cmd: {cmd}")
 
 def on_press(key):
     global STOP, START, RECORD_TOGGLE
@@ -72,6 +88,118 @@ def get_state() -> dict:
         "READY": READY,
         "RECORD_RUNNING": RECORD_RUNNING,
     }
+
+async def setup_jetstream(stream_name, video_subject):
+    """Configura el Stream para video de alta velocidad."""
+    global js
+    try:
+        js = nats_client.jetstream()
+        
+        config = StreamConfig(
+            name=stream_name,
+            subjects=[video_subject],
+            retention=RetentionPolicy.LIMITS,
+            max_msgs=1,        
+            max_bytes=-1,
+            discard=DiscardPolicy.OLD, 
+            max_age=1.0,      
+            storage=StorageType.MEMORY, 
+        )
+        
+        await js.add_stream(config=config)
+        logger_mp.info(f'🚀 JetStream Stream "{stream_name}" configurado OK')
+    except Exception as e:
+        logger_mp.warn(f'⚠️ Aviso JetStream setup: {e}')
+
+def _start_nats_listener(nats_server, subject):
+    """Inicia el listener de NATS en un hilo separado."""
+    def run_nats():
+        nats_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(nats_loop)
+        nats_loop.run_until_complete(nats_handler())
+    
+    nats_thread = threading.Thread(target=run_nats, daemon=True)
+    nats_thread.start()
+    logger_mp.info(f'📡 NATS listener iniciado: {nats_server} [{subject}]')
+
+
+async def nats_handler(nats_server, subject):
+    """Handler asíncrono para mensajes NATS."""
+    global nats_client
+    try:
+        async def disconnected_cb():
+            nats_connected = False
+            logger_mp.warn('⚠️ NATS desconectado')
+        async def reconnected_cb():
+            connected = True
+            logger_mp.info(f'🔄 NATS reconectado: {nats_server}')
+            await publish_nats_connection_status(1)
+        async def closed_cb():
+            nats_connected = False
+            logger_mp.warn('⛔ Conexión NATS cerrada')
+        nats_client = await nats.connect(
+            nats_server,
+            disconnected_cb=disconnected_cb,
+            reconnected_cb=reconnected_cb,
+            closed_cb=closed_cb,
+        )
+        nats_connected = True
+        logger_mp.info(f'✅ Conectado a NATS: {nats_server}')
+        await publish_nats_connection_status(1)
+        await setup_jetstream()
+        
+        async def message_handler(msg):
+            command = msg.data.decode().strip().lower()
+            logger_mp.info(f'📩 NATS comando recibido: {command}')
+            handle_nats_command(command)
+        
+        await nats_client.subscribe(subject, cb=message_handler)
+        
+        while True:
+            await asyncio.sleep(1)
+            
+    except Exception as e:
+        nats_connected = False
+        await publish_nats_connection_status(0)
+        logger_mp.error(f'❌ Error NATS: {e}')
+
+async def publish_nats_connection_status(status: int, nats_connection):
+        """Publica estado de conexión a NATS: 1=conectado, 0=desconectado."""
+        global nats_client
+        if nats_client:
+            return
+        try:
+            await nats_client.publish(nats_connection, str(status).encode())
+            await nats_client.flush(timeout=1)
+            logger_mp.info(f'📶 Estado NATS publicado en "{nats_connection}": {status}')
+        except Exception as e:
+            logger_mp.warn(f'⚠️ No se pudo publicar estado NATS ({status}): {e}')
+
+async def _async_publish_video(jpg_bytes, subject):
+    """Corutina para publicar bytes a JetStream."""
+    if js:
+        try:
+            await js.publish(subject, jpg_bytes)
+        except Exception:
+            pass 
+
+def handle_nats_command(self, command: str):
+    """Procesa comandos recibidos por NATS."""
+    if command == 'start':
+        print("\n>>> 📡 NATS: INICIANDO TELEOPERACIÓN <<<")
+        START = True
+        print(">>> 🟢 TELEOPERACIÓN INICIADA\n")
+            
+    elif command == 'record':
+        RECORD_TOGGLE = True
+            
+    elif command == 'stop_record':
+        RECORD_TOGGLE = True
+            
+    elif command == 'quit':
+        print("\n>>> 📡 NATS: CERRANDO... <<<")
+        START = False
+        STOP = True
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -100,6 +228,15 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     logger_mp.info(f"args: {args}")
+
+    load_dotenv()
+
+    nats_servers = os.getenv("NATS_SERVER", "nats://0.0.0.0:4222")
+    robot_id = os.getenv("ROBOT_ID", 1)
+    subject = f'teleop.{robot_id}.g1'
+
+    if NATS_AVAILABLE:
+        _start_nats_listener(nats_servers, subject)
 
     try:
         # ipc communication mode. client usage: see utils/ipc.py
