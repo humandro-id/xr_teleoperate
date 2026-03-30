@@ -3,8 +3,8 @@ import argparse
 from multiprocessing import Value, Array, Lock
 import threading
 import logging_mp
-logging_mp.basic_config(level=logging_mp.INFO)
-logger_mp = logging_mp.get_logger(__name__)
+logging_mp.basicConfig(level=logging_mp.INFO)
+logger_mp = logging_mp.getLogger(__name__)
 
 import os 
 import sys
@@ -111,19 +111,19 @@ async def setup_jetstream(stream_name, video_subject):
     except Exception as e:
         logger_mp.warn(f'⚠️ Aviso JetStream setup: {e}')
 
-def _start_nats_listener(nats_server, subject):
+def _start_nats_listener(nats_server, subject, stream_name, subject_name):
     """Inicia el listener de NATS en un hilo separado."""
     def run_nats():
         nats_loop = asyncio.new_event_loop()
         asyncio.set_event_loop(nats_loop)
-        nats_loop.run_until_complete(nats_handler())
+        nats_loop.run_until_complete(nats_handler(nats_server, subject, stream_name, subject_name))
     
     nats_thread = threading.Thread(target=run_nats, daemon=True)
     nats_thread.start()
     logger_mp.info(f'📡 NATS listener iniciado: {nats_server} [{subject}]')
 
 
-async def nats_handler(nats_server, subject):
+async def nats_handler(nats_server, subject, stream_name, subject_name):
     """Handler asíncrono para mensajes NATS."""
     global nats_client
     try:
@@ -133,7 +133,7 @@ async def nats_handler(nats_server, subject):
         async def reconnected_cb():
             connected = True
             logger_mp.info(f'🔄 NATS reconectado: {nats_server}')
-            await publish_nats_connection_status(1)
+            await publish_nats_connection_status(1, nats_server)
         async def closed_cb():
             nats_connected = False
             logger_mp.warn('⛔ Conexión NATS cerrada')
@@ -145,8 +145,8 @@ async def nats_handler(nats_server, subject):
         )
         nats_connected = True
         logger_mp.info(f'✅ Conectado a NATS: {nats_server}')
-        await publish_nats_connection_status(1)
-        await setup_jetstream()
+        await publish_nats_connection_status(1, nats_server)
+        await setup_jetstream(stream_name, subject_name)
         
         async def message_handler(msg):
             command = msg.data.decode().strip().lower()
@@ -160,18 +160,18 @@ async def nats_handler(nats_server, subject):
             
     except Exception as e:
         nats_connected = False
-        await publish_nats_connection_status(0)
+        await publish_nats_connection_status(0, nats_server)
         logger_mp.error(f'❌ Error NATS: {e}')
 
-async def publish_nats_connection_status(status: int, nats_connection):
+async def publish_nats_connection_status(status: int, nats_server):
         """Publica estado de conexión a NATS: 1=conectado, 0=desconectado."""
         global nats_client
         if nats_client:
             return
         try:
-            await nats_client.publish(nats_connection, str(status).encode())
+            await nats_client.publish(nats_server, str(status).encode())
             await nats_client.flush(timeout=1)
-            logger_mp.info(f'📶 Estado NATS publicado en "{nats_connection}": {status}')
+            logger_mp.info(f'📶 Estado NATS publicado en "{nats_server}": {status}')
         except Exception as e:
             logger_mp.warn(f'⚠️ No se pudo publicar estado NATS ({status}): {e}')
 
@@ -183,8 +183,9 @@ async def _async_publish_video(jpg_bytes, subject):
         except Exception:
             pass 
 
-def handle_nats_command(self, command: str):
+def handle_nats_command(command: str):
     """Procesa comandos recibidos por NATS."""
+    global STOP, START, RECORD_TOGGLE
     if command == 'start':
         print("\n>>> 📡 NATS: INICIANDO TELEOPERACIÓN <<<")
         START = True
@@ -231,12 +232,14 @@ if __name__ == '__main__':
 
     load_dotenv()
 
-    nats_servers = os.getenv("NATS_SERVER", "nats://0.0.0.0:4222")
+    nats_servers = os.getenv("NATS_SERVER", "nats://192.168.30.58:4222")
     robot_id = os.getenv("ROBOT_ID", 1)
-    subject = f'teleop.{robot_id}.g1'
+    subject = f'g1.{robot_id}.command'
+    stream_name = 'G1_VIDEO'
+    subject_name = f'g1.{robot_id}.camera'
 
     if NATS_AVAILABLE:
-        _start_nats_listener(nats_servers, subject)
+        _start_nats_listener(nats_servers, subject, stream_name, subject_name)
 
     try:
         # ipc communication mode. client usage: see utils/ipc.py
