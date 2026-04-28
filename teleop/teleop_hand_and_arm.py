@@ -57,16 +57,6 @@ js = None
 nats_client = None
 
 
-def nats_to_on_press(cmd: str):
-    if cmd == "START":
-        on_press("r")
-    elif cmd == "RECORD_TOGGLE":
-        on_press("s")
-    elif cmd == "STOP":
-        on_press("q")
-    else:
-        logger_mp.warning(f"[NATS] Unknown cmd: {cmd}")
-
 def on_press(key):
     global STOP, START, RECORD_TOGGLE
     if key == 'r':
@@ -191,7 +181,7 @@ def handle_nats_command(command: str):
         START = True
         print(">>> 🟢 TELEOPERACIÓN INICIADA\n")
             
-    elif command == 'record':
+    elif command == 'record' and START == True:
         RECORD_TOGGLE = True
             
     elif command == 'stop_record':
@@ -232,7 +222,7 @@ if __name__ == '__main__':
 
     load_dotenv()
 
-    nats_servers = os.getenv("NATS_SERVER", "nats://192.168.30.58:4222")
+    nats_servers = os.getenv("NATS_SERVER", "nats://192.168.30.88:4222")
     robot_id = os.getenv("ROBOT_ID", 1)
     subject = f'g1.{robot_id}.command'
     stream_name = 'G1_VIDEO'
@@ -383,7 +373,7 @@ if __name__ == '__main__':
                                      task_desc = args.task_desc,
                                      task_steps = args.task_steps,
                                      frequency = args.frequency, 
-                                     rerun_log = not args.headless)
+                                     rerun_log = False)
 
         logger_mp.info("Please enter the start signal (enter 'r' to start the subsequent program)")
         READY = True                  # now ready to (1) enter START state
@@ -395,6 +385,9 @@ if __name__ == '__main__':
 
         logger_mp.info("---------------------🚀start program🚀-------------------------")
         arm_ctrl.speed_gradual_max()
+        head_img = None
+        left_wrist_img = None
+        right_wrist_img = None
         # main loop. robot start to follow VR user's motion
         while not STOP:
             start_time = time.time()
