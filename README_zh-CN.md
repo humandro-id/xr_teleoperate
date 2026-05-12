@@ -86,6 +86,10 @@
     <td style="text-align: center;"> &#9989; 完成 </td>
   </tr>
   <tr>
+    <td style="text-align: center;"> <a href="https://www.unitree.com/cn/h2" target="_blank"> H2 </td>
+    <td style="text-align: center;"> &#9989; 完成 </td>
+  </tr>
+  <tr>
     <td style="text-align: center;"> <a href="https://www.unitree.com/cn/Dex1-1" target="_blank"> Dex1-1 夹爪 </td>
     <td style="text-align: center;"> &#9989; 完成 </td>
   </tr>

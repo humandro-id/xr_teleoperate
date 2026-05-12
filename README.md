@@ -69,31 +69,35 @@ The currently supported devices in this repository:
     <th align="center">⚪ Status</th>
   </tr>
   <tr>
-    <td align="center"><a href="https://www.unitree.com/cn/g1" target="_blank">G1 (29 DoF)</a></td>
+    <td align="center"><a href="https://www.unitree.com/g1" target="_blank">G1 (29 DoF)</a></td>
     <td align="center">✅ Complete</td>
   </tr>
   <tr>
-    <td align="center"><a href="https://www.unitree.com/cn/g1" target="_blank">G1 (23 DoF)</a></td>
+    <td align="center"><a href="https://www.unitree.com/g1" target="_blank">G1 (23 DoF)</a></td>
     <td align="center">✅ Complete</td>
   </tr>
   <tr>
-    <td align="center"><a href="https://www.unitree.com/cn/h1" target="_blank">H1 (4‑DoF arm)</a></td>
+    <td align="center"><a href="https://www.unitree.com/h1" target="_blank">H1 (4‑DoF arm)</a></td>
     <td align="center">✅ Complete</td>
   </tr>
   <tr>
-    <td align="center"><a href="https://www.unitree.com/cn/h1" target="_blank">H1_2 (7‑DoF arm)</a></td>
+    <td align="center"><a href="https://www.unitree.com/h1" target="_blank">H1_2 (7‑DoF arm)</a></td>
     <td align="center">✅ Complete</td>
   </tr>
   <tr>
-    <td align="center"><a href="https://www.unitree.com/cn/Dex1-1" target="_blank">Dex1‑1 gripper</a></td>
+    <td align="center"><a href="https://www.unitree.com/h2" target="_blank">H2 (7‑DoF arm)</a></td>
     <td align="center">✅ Complete</td>
   </tr>
   <tr>
-    <td align="center"><a href="https://www.unitree.com/cn/Dex3-1" target="_blank">Dex3‑1 dexterous hand</a></td>
+    <td align="center"><a href="https://www.unitree.com/Dex1-1" target="_blank">Dex1‑1 gripper</a></td>
     <td align="center">✅ Complete</td>
   </tr>
   <tr>
-    <td align="center"><a href="https://support.unitree.com/home/zh/G1_developer/inspire_dfx_dexterous_hand" target="_blank">Inspire dexterous hand</a></td>
+    <td align="center"><a href="https://www.unitree.com/Dex3-1" target="_blank">Dex3‑1 dexterous hand</a></td>
+    <td align="center">✅ Complete</td>
+  </tr>
+  <tr>
+    <td align="center"><a href="https://support.unitree.com/home/en/G1_developer/inspire_dfx_dexterous_hand" target="_blank">Inspire dexterous hand</a></td>
     <td align="center">✅ Complete</td>
   </tr>
   <tr>
@@ -306,8 +310,10 @@ Next steps:
 4. Open a browser (e.g. Safari or PICO Browser) and go to:  `https://192.168.123.2:8012/?ws=wss://192.168.123.2:8012`
 
    > **Note 1**: This IP must match your **Host** IP (check with `ifconfig`).
-   >
-   > **Note 2**: You may see a warning page. Click **Advanced**, then **Proceed to IP (unsafe)**.
+   > 
+   > **Note 2**: Use `https://vuer.ai?ws=wss://192.168.123.2:8012` for PICO if the websocket connection cannot be set.
+   > 
+   > **Note 3**: You may see a warning page. Click **Advanced**, then **Proceed to IP (unsafe)**.
 
    <p align="center">
      <a href="https://oss-global-cdn.unitree.com/static/cef18751ca6643b683bfbea35fed8e7c_1279x1002.png">
