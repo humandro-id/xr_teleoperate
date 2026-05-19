@@ -23,7 +23,7 @@ from multiprocessing import Process, Array
 
 from std_msgs.msg import Float64MultiArray
 import logging_mp
-logger_mp = logging_mp.get_logger(__name__)
+logger_mp = logging_mp.getLogger(__name__)
 
 Inspire_Num_Motors = 6
 
