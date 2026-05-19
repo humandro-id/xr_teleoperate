@@ -18,7 +18,9 @@ from teleop.robot_control.robot_arm_ik import G1_29_ArmIK, G1_23_ArmIK, H1_2_Arm
 from teleop.robot_control.robot_hand_unitree import Dex3_1_Controller, Dex1_1_Gripper_Controller
 from teleop.robot_control.robot_hand_inspire import Inspire_Controller_DFX, Inspire_Controller_FTP
 from teleop.robot_control.robot_hand_inspire_senseglove import Inspire_Controller_SenseGlove, apply_senseglove_mount_offset
+from teleop.robot_control.robot_hand_inspire_udcap import Inspire_Controller_UDCAP
 from teleop.robot_control.robot_hand_brainco import Brainco_Controller
+from teleop.robot_control.robot_hand_brainco_udcap import Brainco_Controller_UDCAP
 from teleimager.image_client import ImageClient
 from teleop.utils.episode_writer import EpisodeWriter
 from teleop.utils.ipc import IPC_Server
@@ -199,9 +201,11 @@ if __name__ == '__main__':
     parser.add_argument('--input-mode', type=str, choices=['hand', 'controller'], default='hand', help='Select XR device input tracking source')
     parser.add_argument('--display-mode', type=str, choices=['immersive', 'ego', 'pass-through'], default='immersive', help='Select XR device display mode')
     parser.add_argument('--arm', type=str, choices=['G1_29', 'G1_23', 'H1_2', 'H1'], default='G1_29', help='Select arm controller')
-    parser.add_argument('--ee', type=str, choices=['dex1', 'dex3', 'inspire_ftp', 'inspire_dfx', 'inspire_ftp_sg', 'brainco'], help='Select end effector controller')
+    parser.add_argument('--ee', type=str, choices=['dex1', 'dex3', 'inspire_ftp', 'inspire_dfx', 'inspire_ftp_sg', 'inspire_ftp_uc', 'brainco', 'brainco_uc'], help='Select end effector controller')
     parser.add_argument('--left-glove-topic', type=str, default='/senseglove/glove00799/lh/joint_states', help='ROS2 topic for left SenseGlove joint_states')
     parser.add_argument('--right-glove-topic', type=str, default='/senseglove/glove00768/rh/joint_states', help='ROS2 topic for right SenseGlove joint_states')
+    parser.add_argument('--udcap-host', type=str, default='0.0.0.0', help='UDCAP OSC BIND host on the robot (0.0.0.0 = all robot interfaces). NOT the sender PC IP. Used by inspire_ftp_uc and brainco_uc.')
+    parser.add_argument('--udcap-port', type=int, default=9000, help='UDCAP OSC bind port (used by inspire_ftp_uc and brainco_uc)')
     parser.add_argument('--img-server-ip', type=str, default='192.168.123.164', help='IP address of image server, used by teleimager and televuer')
     # mode flags
     parser.add_argument('--motion', action = 'store_true', help = 'Enable motion control mode')
@@ -222,7 +226,7 @@ if __name__ == '__main__':
 
     load_dotenv()
 
-    nats_servers = os.getenv("NATS_SERVER", "nats://192.168.30.88:4222")
+    nats_servers = os.getenv("NATS_SERVER", "nats://192.168.30.96:4222")
     robot_id = os.getenv("ROBOT_ID", 1)
     subject = f'g1.{robot_id}.command'
     stream_name = 'G1_VIDEO'
@@ -329,6 +333,19 @@ if __name__ == '__main__':
                 left_glove_topic=args.left_glove_topic,
                 right_glove_topic=args.right_glove_topic,
             )
+        elif args.ee == "inspire_ftp_uc":
+            dual_hand_data_lock = Lock()
+            dual_hand_state_array = Array('d', 12, lock = False)   # [output] current left, right hand state(12) data.
+            dual_hand_action_array = Array('d', 12, lock = False)  # [output] current left, right hand action(12) data.
+            logger_mp.info("Por entrar al inspire controller UDCAP")
+            hand_ctrl = Inspire_Controller_UDCAP(
+                dual_hand_data_lock=dual_hand_data_lock,
+                dual_hand_state_array=dual_hand_state_array,
+                dual_hand_action_array=dual_hand_action_array,
+                simulation_mode=args.sim,
+                udcap_host=args.udcap_host,
+                udcap_port=args.udcap_port,
+            )
         elif args.ee == "brainco":
             left_hand_pos_array = Array('d', 75, lock = True)      # [input]
             right_hand_pos_array = Array('d', 75, lock = True)     # [input]
@@ -337,6 +354,19 @@ if __name__ == '__main__':
             dual_hand_action_array = Array('d', 12, lock = False)  # [output] current left, right hand action(12) data.
             hand_ctrl = Brainco_Controller(left_hand_pos_array, right_hand_pos_array, dual_hand_data_lock, 
                                            dual_hand_state_array, dual_hand_action_array, simulation_mode=args.sim)
+        elif args.ee == "brainco_uc":
+            dual_hand_data_lock = Lock()
+            dual_hand_state_array = Array('d', 12, lock = False)   # [output] current left, right hand state(12) data.
+            dual_hand_action_array = Array('d', 12, lock = False)  # [output] current left, right hand action(12) data.
+            logger_mp.info("Por entrar al brainco controller UDCAP")
+            hand_ctrl = Brainco_Controller_UDCAP(
+                dual_hand_data_lock=dual_hand_data_lock,
+                dual_hand_state_array=dual_hand_state_array,
+                dual_hand_action_array=dual_hand_action_array,
+                simulation_mode=args.sim,
+                udcap_host=args.udcap_host,
+                udcap_port=args.udcap_port,
+            )
         else:
             pass
         
@@ -507,7 +537,7 @@ if __name__ == '__main__':
                         right_hand_action = dual_hand_action_array[-6:]
                         current_body_state = []
                         current_body_action = []
-                elif args.ee == "inspire_ftp_sg":
+                elif args.ee == "inspire_ftp_sg" or args.ee == "inspire_ftp_uc" or args.ee == "brainco_uc":
                     with dual_hand_data_lock:
                         left_ee_state = dual_hand_state_array[:6]
                         right_ee_state = dual_hand_state_array[-6:]
