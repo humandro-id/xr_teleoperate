@@ -231,7 +231,7 @@ kTopicGripperRightState = "rt/dex1/right/state"
 
 class Dex1_1_Gripper_Controller:
     def __init__(self, left_gripper_value_in, right_gripper_value_in, dual_gripper_data_lock = None, dual_gripper_state_out = None, dual_gripper_action_out = None, 
-                       filter = True, fps = 200.0, Unit_Test = False, simulation_mode = False):
+                       filter = True, fps = 200.0, Unit_Test = False, simulation_mode = False, xr_motion_data_ready_in = None):
         """
         [note] A *_array type parameter requires using a multiprocessing Array, because it needs to be passed to the internal child process
 
@@ -290,7 +290,7 @@ class Dex1_1_Gripper_Controller:
         logger_mp.info("[Dex1_1_Gripper_Controller] Subscribe dds ok.")
 
         self.gripper_control_thread = threading.Thread(target=self.control_thread, args=(left_gripper_value_in, right_gripper_value_in, self.left_gripper_state_value, self.right_gripper_state_value,
-                                                                                         dual_gripper_data_lock, dual_gripper_state_out, dual_gripper_action_out))
+                                                                                         dual_gripper_data_lock, dual_gripper_state_out, dual_gripper_action_out, xr_motion_data_ready_in))
         self.gripper_control_thread.daemon = True
         self.gripper_control_thread.start()
 
@@ -300,10 +300,10 @@ class Dex1_1_Gripper_Controller:
         while True:
             left_gripper_msg  = self.LeftGripperState_subscriber.Read()
             right_gripper_msg  = self.RightGripperState_subscriber.Read()
-            self.gripper_sub_ready = True
             if left_gripper_msg is not None and right_gripper_msg is not None:
                 self.left_gripper_state_value.value = left_gripper_msg.states[0].q
                 self.right_gripper_state_value.value = right_gripper_msg.states[0].q
+                self.gripper_sub_ready = True
             time.sleep(0.002)
     
     def ctrl_dual_gripper(self, dual_gripper_action):
@@ -316,7 +316,7 @@ class Dex1_1_Gripper_Controller:
         # logger_mp.debug("gripper ctrl publish ok.")
     
     def control_thread(self, left_gripper_value_in, right_gripper_value_in, left_gripper_state_value, right_gripper_state_value, dual_hand_data_lock = None, 
-                             dual_gripper_state_out = None, dual_gripper_action_out = None):
+                             dual_gripper_state_out = None, dual_gripper_action_out = None, xr_motion_data_ready_in = None):
         self.running = True
         DELTA_GRIPPER_CMD = 0.18     # The motor rotates 5.4 radians, the clamping jaw slide open 9 cm, so 0.6 rad <==> 1 cm, 0.18 rad <==> 3 mm
         THUMB_INDEX_DISTANCE_MIN = 5.0
@@ -356,13 +356,21 @@ class Dex1_1_Gripper_Controller:
                     left_gripper_value  = left_gripper_value_in.value
                 with right_gripper_value_in.get_lock():
                     right_gripper_value = right_gripper_value_in.value
+                if xr_motion_data_ready_in is not None:
+                    with xr_motion_data_ready_in.get_lock():
+                        xr_motion_data_ready = xr_motion_data_ready_in.value
+                else:
+                    xr_motion_data_ready = True
                 # get current dual gripper motor state
                 dual_gripper_state = np.array([left_gripper_state_value.value, right_gripper_state_value.value])
-                
-                if left_gripper_value != 0.0 or right_gripper_value != 0.0: # if input data has been initialized.
+
+                if xr_motion_data_ready:
                     # Linear mapping from [0, THUMB_INDEX_DISTANCE_MAX] to gripper action range
                     left_target_action  = np.interp(left_gripper_value, [THUMB_INDEX_DISTANCE_MIN, THUMB_INDEX_DISTANCE_MAX], [LEFT_MAPPED_MIN, LEFT_MAPPED_MAX])
                     right_target_action = np.interp(right_gripper_value, [THUMB_INDEX_DISTANCE_MIN, THUMB_INDEX_DISTANCE_MAX], [RIGHT_MAPPED_MIN, RIGHT_MAPPED_MAX])
+                else:
+                    left_target_action = dual_gripper_state[0]
+                    right_target_action = dual_gripper_state[1]
                 # clip dual gripper action to avoid overflow
                 if not self.simulation_mode:
                     left_actual_action  = np.clip(left_target_action,  dual_gripper_state[0] - DELTA_GRIPPER_CMD, dual_gripper_state[0] + DELTA_GRIPPER_CMD) 
