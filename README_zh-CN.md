@@ -36,21 +36,14 @@
 
 # 🔖 [版本说明](CHANGELOG_zh-CN.md)
 
-## 🏷️ v1.4
+## 🏷️ v1.5 (2025.12.29)
 
-- **图像服务器**变更为 [teleimager](https://github.com/silencht/teleimager)，具体请查看仓库README。
+- 支持**仿真模式**
+- 添加 cyclonedds 网卡名称参数
+- [引入缓存机制以加速 URDF 加载](https://github.com/unitreerobotics/xr_teleoperate/commit/6cab654620735bfa347c1cd32a0d8c0c1e6ec343)
+- ...
 
-- 升级 [televuer](https://github.com/silencht/televuer)，具体请查看仓库README。
 
-  > 新版本的 [teleimager](https://github.com/silencht/teleimager/commit/ab5018691943433c24af4c9a7f3ea0c9a6fbaf3c) + [televuer](https://github.com/silencht/televuer/releases/tag/v3.0) 支持通过 webrtc 传输头部相机图像
-  >
-  > 支持 pass-through, ego, immersive 三种模式
-
-- 完善系统的**状态机**信息、IPC模式。
-
-- 支持 **inspire_FTP** 灵巧手。
-
-- ···
 
 # 0. 📖 介绍
 
@@ -90,6 +83,10 @@
   </tr>
   <tr>
     <td style="text-align: center;"> <a href="https://www.unitree.com/cn/h1" target="_blank"> H1_2 (手臂7自由度) </td>
+    <td style="text-align: center;"> &#9989; 完成 </td>
+  </tr>
+  <tr>
+    <td style="text-align: center;"> <a href="https://www.unitree.com/cn/h2" target="_blank"> H2 </td>
     <td style="text-align: center;"> &#9989; 完成 </td>
   </tr>
   <tr>
@@ -225,20 +222,21 @@ build  cert.pem  key.pem  LICENSE  pyproject.toml  README.md  rootCA.key  rootCA
 
 - 基础控制参数
 
-|      ⚙️ 参数       |                            📜 说明                            |                         🔘 目前可选值                         |     📌 默认值      |
-| :---------------: | :----------------------------------------------------------: | :----------------------------------------------------------: | :---------------: |
-|   `--frequency`   |                     设置录制和控制的 FPS                     |                    任意正常范围内的浮点数                    |       30.0        |
-|  `--input-mode`   |          选择 XR 输入模式（通过什么方式控制机器人）          |   `hand`（**手势跟踪**）<br />`controller`（**手柄跟踪**）   |      `hand`       |
-| `--display-mode`  |        选择 XR 显示模式（通过什么方式查看机器人视角）        | `immersive`（沉浸式）<br />`ego`（通透+第一人称小窗）<br />`pass-through`（通透） |    `immersive`    |
-|      `--arm`      |            选择机器人设备类型（可参考 0. 📖 介绍）            |          `G1_29`<br />`G1_23`<br />`H1_2`<br />`H1`          |      `G1_29`      |
-|      `--ee`       |       选择手臂的末端执行器设备类型（可参考 0. 📖 介绍）       | `dex1`<br />`dex3`<br />`inspire_ftp`<br />`inspire_dfx`<br />`brainco` |     无默认值      |
-| `--img-server-ip` | 设置图像服务器的 IP 地址，用于接收图像服务流、配置 WebRTC 信令服务地址 |                         `IPv4` 地址                          | `192.168.123.164` |
+|        ⚙️ 参数         |                            📜 说明                            |                         🔘 目前可选值                         |     📌 默认值      |
+| :-------------------: | :----------------------------------------------------------: | :----------------------------------------------------------: | :---------------: |
+|     `--frequency`     |                     设置录制和控制的 FPS                     |                    任意正常范围内的浮点数                    |       30.0        |
+|    `--input-mode`     |          选择 XR 输入模式（通过什么方式控制机器人）          |   `hand`（**手势跟踪**）<br />`controller`（**手柄跟踪**）   |      `hand`       |
+|   `--display-mode`    |        选择 XR 显示模式（通过什么方式查看机器人视角）        | `immersive`（沉浸式）<br />`ego`（通透+第一人称小窗）<br />`pass-through`（通透） |    `immersive`    |
+|        `--arm`        |            选择机器人设备类型（可参考 0. 📖 介绍）            |          `G1_29`<br />`G1_23`<br />`H1_2`<br />`H1`          |      `G1_29`      |
+|        `--ee`         |       选择手臂的末端执行器设备类型（可参考 0. 📖 介绍）       | `dex1`<br />`dex3`<br />`inspire_ftp`<br />`inspire_dfx`<br />`brainco` |     无默认值      |
+|   `--img-server-ip`   | 设置图像服务器的 IP 地址，用于接收图像服务流、配置 WebRTC 信令服务地址 |                         `IPv4` 地址                          | `192.168.123.164` |
+| `--network-interface` |                设置 cyclonedds 通信的网卡接口                |                           网卡名称                           |      `None`       |
 
 - 模式开关参数
 
 |    ⚙️ 参数    |                            📜 说明                            |
 | :----------: | :----------------------------------------------------------: |
-|  `--motion`  | 【启用**运动控制**模式】<br />开启本模式后，可在机器人运控程序运行下进行遥操作程序。<br />**手势跟踪**模式下，可使用 [R3遥控器](https://www.unitree.com/cn/R3) 控制机器人正常行走；**手柄跟踪**模式下，也可使用[手柄摇杆控制机器人行走](https://github.com/unitreerobotics/xr_teleoperate/blob/375cdc27605de377c698e2b89cad0e5885724ca6/teleop/teleop_hand_and_arm.py#L247-L257)。 |
+|  `--motion`  | 【启用**运动控制**模式】<br />开启本模式后，可在机器人运控程序运行下进行遥操作程序。<br />**手势跟踪**模式下，可使用 [R3遥控器](https://www.unitree.com/cn/R3) 控制机器人正常行走；**手柄跟踪**模式下，也可使用[手柄摇杆控制机器人行走](https://github.com/unitreerobotics/xr_teleoperate/blob/375cdc27605de377c698e2b89cad0e5885724ca6/teleop/teleop_hand_and_arm.py#L247-L257)。<br />注意：只支持 `Regular mode` (R1+X)，不支持 `Running mode` (R2+A) |
 | `--headless` | 【启用**无图形界面**模式】<br />适用于本程序部署在开发计算单元（PC2）等无显示器情况 |
 |   `--sim`    | 【启用[**仿真模式**](https://github.com/unitreerobotics/unitree_sim_isaaclab)】 |
 |   `--ipc`    | 【进程间通信模式】<br />可通过进程间通信来控制 xr_teleoperate 程序的状态切换，此模式适合与代理程序进行交互 |
@@ -261,7 +259,6 @@ build  cert.pem  key.pem  LICENSE  pyproject.toml  README.md  rootCA.key  rootCA
 
 ## 2.1 📥 环境配置
 
-> 因为图像服务升级为`teleimager`，v1.4 版本仿真部署暂未上线，请暂时使用 v1.3 进行测试
 
 首先，请安装 [unitree_sim_isaaclab](https://github.com/unitreerobotics/unitree_sim_isaaclab)。具体安装步骤，可参考该仓库 README 文档。
 
@@ -566,3 +563,17 @@ xr_teleoperate/
 8. https://github.com/Dingry/BunnyVisionPro
 9. https://github.com/unitreerobotics/unitree_sdk2_python
 10. https://github.com/ARCLab-MIT/beavr-bot
+
+
+
+# 7. 📝 引用
+
+```
+@misc{xr-teleoperate,
+  author       = {{Unitree Robotics}},
+  title        = {{XR-Teleoperate}: An Open-Source Teleoperation Framework and Data Collection Toolkit for Embodied Intelligence},
+  howpublished = {\url{https://github.com/unitreerobotics/xr_teleoperate}},
+  year         = {2024},
+  note         = {Accessed: 2026-02}
+}
+```

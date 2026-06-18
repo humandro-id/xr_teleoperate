@@ -8,7 +8,6 @@ import time
 # MotionSwitcher used to switch mode between debug mode and ai mode
 class MotionSwitcher:
     def __init__(self):
-        ChannelFactoryInitialize(0)
         self.msc = MotionSwitcherClient()
         self.msc.SetTimeout(1.0)
         self.msc.Init()
@@ -33,7 +32,6 @@ class MotionSwitcher:
 
 class LocoClientWrapper:
     def __init__(self):
-        ChannelFactoryInitialize(0)
         self.client = LocoClient()
         self.client.SetTimeout(0.0001)
         self.client.Init()
@@ -45,7 +43,7 @@ class LocoClientWrapper:
         self.client.Move(vx, vy, vyaw, continous_move=False)
 
 if __name__ == '__main__':
-    ChannelFactoryInitialize(0)
+    ChannelFactoryInitialize(1) # 0 for real robot, 1 for simulation
     ms = MotionSwitcher()
     status, result = ms.Enter_Debug_Mode()
     print("Enter debug mode:", status, result)

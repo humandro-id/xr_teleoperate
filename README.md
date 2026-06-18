@@ -7,7 +7,7 @@
     <a> English </a> | <a href="README_zh-CN.md">中文</a> | <a href="README_ja-JP.md">日本語</a>
   </p>
   <p align="center">
-    <a href="https://github.com/unitreerobotics/xr_teleoperate/wiki" target="_blank"> <img src="https://img.shields.io/badge/GitHub-Wiki-181717?logo=github" alt="Unitree LOGO"></a> <a href="https://discord.gg/ZwcVwxv5rq" target="_blank"><img src="https://img.shields.io/badge/-Discord-5865F2?style=flat&logo=Discord&logoColor=white" alt="Unitree LOGO"></a>
+    <a href="https://github.com/unitreerobotics/xr_teleoperate/wiki" target="_blank"> <img src="https://img.shields.io/badge/GitHub-Wiki-181717?logo=github" alt="Unitree LOGO"></a> <a href="https://discord.gg/ZwcVwxv5rq" target="_blank"><img src="https://img.shields.io/badge/-Discord-5865F2?style=flat&logo=Discord&logoColor=white" alt="Unitree LOGO"> <a href="https://deepwiki.com/unitreerobotics/xr_teleoperate"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a> </a>
   </p>
 </div>
 
@@ -36,20 +36,14 @@
 
 # 🔖[Release Note](CHANGELOG.md)
 
-## 🏷️ v1.4
+## 🏷️ v1.5 (2025.12.29)
 
-- The **image server** has been changed to [teleimager](https://github.com/silencht/teleimager). Please refer to the repository README for details.
+- support simulation
+- add CycloneDDS interface name parameter
+- [add caching to speed-up urdf loading](https://github.com/unitreerobotics/xr_teleoperate/commit/6cab654620735bfa347c1cd32a0d8c0c1e6ec343)
+- ...
 
-- Upgraded [televuer](https://github.com/silencht/televuer). Please see the repository README for details.
 
-  > The new versions of [teleimager](https://github.com/silencht/teleimager/commit/ab5018691943433c24af4c9a7f3ea0c9a6fbaf3c) + [televuer](https://github.com/silencht/televuer/releases/tag/v3.0) support transmitting **head camera images via WebRTC**.
-  >  Supports **pass-through**, **ego**, and **immersive** modes.
-
-- Improved the system’s **state machine** information and IPC mode.
-
-- Added support for **Inspire_FTP dexterous hand**.
-
-- …
 
 # 0. 📖 Introduction
 
@@ -75,31 +69,35 @@ The currently supported devices in this repository:
     <th align="center">⚪ Status</th>
   </tr>
   <tr>
-    <td align="center"><a href="https://www.unitree.com/cn/g1" target="_blank">G1 (29 DoF)</a></td>
+    <td align="center"><a href="https://www.unitree.com/g1" target="_blank">G1 (29 DoF)</a></td>
     <td align="center">✅ Complete</td>
   </tr>
   <tr>
-    <td align="center"><a href="https://www.unitree.com/cn/g1" target="_blank">G1 (23 DoF)</a></td>
+    <td align="center"><a href="https://www.unitree.com/g1" target="_blank">G1 (23 DoF)</a></td>
     <td align="center">✅ Complete</td>
   </tr>
   <tr>
-    <td align="center"><a href="https://www.unitree.com/cn/h1" target="_blank">H1 (4‑DoF arm)</a></td>
+    <td align="center"><a href="https://www.unitree.com/h1" target="_blank">H1 (4‑DoF arm)</a></td>
     <td align="center">✅ Complete</td>
   </tr>
   <tr>
-    <td align="center"><a href="https://www.unitree.com/cn/h1" target="_blank">H1_2 (7‑DoF arm)</a></td>
+    <td align="center"><a href="https://www.unitree.com/h1" target="_blank">H1_2 (7‑DoF arm)</a></td>
     <td align="center">✅ Complete</td>
   </tr>
   <tr>
-    <td align="center"><a href="https://www.unitree.com/cn/Dex1-1" target="_blank">Dex1‑1 gripper</a></td>
+    <td align="center"><a href="https://www.unitree.com/h2" target="_blank">H2 (7‑DoF arm)</a></td>
     <td align="center">✅ Complete</td>
   </tr>
   <tr>
-    <td align="center"><a href="https://www.unitree.com/cn/Dex3-1" target="_blank">Dex3‑1 dexterous hand</a></td>
+    <td align="center"><a href="https://www.unitree.com/Dex1-1" target="_blank">Dex1‑1 gripper</a></td>
     <td align="center">✅ Complete</td>
   </tr>
   <tr>
-    <td align="center"><a href="https://support.unitree.com/home/zh/G1_developer/inspire_dfx_dexterous_hand" target="_blank">Inspire dexterous hand</a></td>
+    <td align="center"><a href="https://www.unitree.com/Dex3-1" target="_blank">Dex3‑1 dexterous hand</a></td>
+    <td align="center">✅ Complete</td>
+  </tr>
+  <tr>
+    <td align="center"><a href="https://support.unitree.com/home/en/G1_developer/inspire_dfx_dexterous_hand" target="_blank">Inspire dexterous hand</a></td>
     <td align="center">✅ Complete</td>
   </tr>
   <tr>
@@ -212,20 +210,21 @@ build  cert.pem  key.pem  LICENSE  pyproject.toml  README.md  rootCA.key  rootCA
 
 - **Basic control parameters**
 
-|    ⚙️ Parameter    |                        📜 Description                         |                     🔘 Available Options                      |     📌 Default     |
-| :---------------: | :----------------------------------------------------------: | :----------------------------------------------------------: | :---------------: |
-|   `--frequency`   |            Set the FPS for recording and control             |                  Any reasonable float value                  |       30.0        |
-|  `--input-mode`   |       Choose XR input mode (how to control the robot)        | `hand` (hand tracking)`controller` (controller tracking) |      `hand`       |
-| `--display-mode`  |  Choose XR display mode (how to view the robot perspective)  | `immersive` (immersive)`ego` (pass-through + small first-person window)`pass-through` (pass-through only) |    `immersive`    |
-|      `--arm`      |      Select the robot arm type (see 0. 📖 Introduction)       |                   `G1_29` `G1_23` `H1_2` `H1`                   |      `G1_29`      |
-|      `--ee`       | Select the end-effector type of the arm (see 0. 📖 Introduction) |       `dex1` `dex3` `inspire_ftp` `inspire_dfx` `brainco`        |       None        |
-| `--img-server-ip` | Set the image server IP address for receiving image streams and configuring WebRTC signaling |                        `IPv4` address                        | `192.168.123.164` |
+|      ⚙️ Parameter      |                        📜 Description                         |                     🔘 Available Options                      |     📌 Default     |
+| :-------------------: | :----------------------------------------------------------: | :----------------------------------------------------------: | :---------------: |
+|     `--frequency`     |            Set the FPS for recording and control             |                  Any reasonable float value                  |       30.0        |
+|    `--input-mode`     |       Choose XR input mode (how to control the robot)        |   `hand` (hand tracking)`controller` (controller tracking)   |      `hand`       |
+|   `--display-mode`    |  Choose XR display mode (how to view the robot perspective)  | `immersive` (immersive)`ego` (pass-through + small first-person window)`pass-through` (pass-through only) |    `immersive`    |
+|        `--arm`        |      Select the robot arm type (see 0. 📖 Introduction)       |                 `G1_29` `G1_23` `H1_2` `H1`                  |      `G1_29`      |
+|        `--ee`         | Select the end-effector type of the arm (see 0. 📖 Introduction) |     `dex1` `dex3` `inspire_ftp` `inspire_dfx` `brainco`      |       None        |
+|   `--img-server-ip`   | Set the image server IP address for receiving image streams and configuring WebRTC signaling |                        `IPv4` address                        | `192.168.123.164` |
+| `--network-interface` |    Set the network interface for CycloneDDS communication    |                    Network Interface Name                    |      `None`       |
 
 - **Mode switch parameters**
 
 | ⚙️ Parameter  |                        📜 Description                         |
 | :----------: | :----------------------------------------------------------: |
-|  `--motion`  | **Enable motion control mode** When enabled, the teleoperation program can run alongside the robot’s motion control program.In **hand tracking** mode, the [R3 controller](https://www.unitree.com/cn/R3) can be used to control normal robot walking; in **controller tracking** mode, joysticks can also control the robot’s movement. |
+|  `--motion`  | **Enable motion control mode** When enabled, the teleoperation program can run alongside the robot’s motion control program.In **hand tracking** mode, the [R3 controller](https://www.unitree.com/cn/R3) can be used to control normal robot walking; in **controller tracking** mode, joysticks can also control the robot’s movement.<br />Note: Only `Regular mode` (R1+X) is supported, `Running mode` (R2+A) is not supported. |
 | `--headless` | **Enable headless mode** For running the program on devices without a display, e.g., the Development Computing Unit (PC2). |
 |   `--sim`    | **Enable [simulation mode](https://github.com/unitreerobotics/unitree_sim_isaaclab)** |
 |   `--ipc`    | **Inter-process communication mode** Allows controlling the xr_teleoperate program’s state via IPC. Suitable for interaction with agent programs. |
@@ -245,7 +244,6 @@ build  cert.pem  key.pem  LICENSE  pyproject.toml  README.md  rootCA.key  rootCA
 
 ## 2.1 📥 Environment Setup
 
-> Since the image service has been upgraded to `teleimager`, the simulation deployment for v1.4 is temporarily unavailable. Please use v1.3 for testing for now.
 
 First, install [unitree_sim_isaaclab](https://github.com/unitreerobotics/unitree_sim_isaaclab). Follow that repo’s README.
 
@@ -312,8 +310,10 @@ Next steps:
 4. Open a browser (e.g. Safari or PICO Browser) and go to:  `https://192.168.123.2:8012/?ws=wss://192.168.123.2:8012`
 
    > **Note 1**: This IP must match your **Host** IP (check with `ifconfig`).
-   >
-   > **Note 2**: You may see a warning page. Click **Advanced**, then **Proceed to IP (unsafe)**.
+   > 
+   > **Note 2**: Use `https://vuer.ai?ws=wss://192.168.123.2:8012` for PICO if the websocket connection cannot be set.
+   > 
+   > **Note 3**: You may see a warning page. Click **Advanced**, then **Proceed to IP (unsafe)**.
 
    <p align="center">
      <a href="https://oss-global-cdn.unitree.com/static/cef18751ca6643b683bfbea35fed8e7c_1279x1002.png">
@@ -536,3 +536,15 @@ This code builds upon following open-source code-bases. Please visit the URLs to
 8. https://github.com/Dingry/BunnyVisionPro
 9. https://github.com/unitreerobotics/unitree_sdk2_python
 10. https://github.com/ARCLab-MIT/beavr-bot
+
+# 7. 📝 Citation
+
+```
+@misc{xr-teleoperate,
+  author       = {{Unitree Robotics}},
+  title        = {{XR-Teleoperate}: An Open-Source Teleoperation Framework and Data Collection Toolkit for Embodied Intelligence},
+  howpublished = {\url{https://github.com/unitreerobotics/xr_teleoperate}},
+  year         = {2024},
+  note         = {Accessed: 2026-02}
+}
+```

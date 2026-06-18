@@ -1,6 +1,14 @@
 # 🔖 版本说明
 
-## 🏷️ v1.4
+## 🏷️ v1.5 (2025.12.29)
+
+- 支持**仿真模式**
+- 添加 cyclonedds 网卡名称参数
+- 升级 teleimager 版本
+- [将 IPC 迁移至 @ 虚拟地址](https://github.com/unitreerobotics/xr_teleoperate/commit/46603c5ff385da7a9de59fb4a4a5dca1de4d9133)
+- [引入缓存机制以加速 URDF 加载](https://github.com/unitreerobotics/xr_teleoperate/commit/6cab654620735bfa347c1cd32a0d8c0c1e6ec343)
+
+## 🏷️ v1.4 (2025.11.21)
 
 - **图像服务器**变更为 [teleimager](https://github.com/silencht/teleimager)，具体请查看仓库README。
 
@@ -20,7 +28,7 @@
 
 - 支持 **inspire_FTP** 灵巧手
 
-## 🏷️ v1.3
+## 🏷️ v1.3 ( 2025.10.14)
 
 - 添加 [![Unitree LOGO](https://camo.githubusercontent.com/ff307b29fe96a9b115434a450bb921c2a17d4aa108460008a88c58a67d68df4e/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f4769744875622d57696b692d3138313731373f6c6f676f3d676974687562)](https://github.com/unitreerobotics/xr_teleoperate/wiki) [![Unitree LOGO](https://camo.githubusercontent.com/6f5253a8776090a1f89fa7815e7543488a9ec200d153827b4bc7c3cb5e1c1555/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f2d446973636f72642d3538363546323f7374796c653d666c6174266c6f676f3d446973636f7264266c6f676f436f6c6f723d7768697465)](https://discord.gg/ZwcVwxv5rq)
 
@@ -40,17 +48,17 @@
 - 修复了启动按钮逻辑错误。  
 - 修复了仿真模式中的若干 bug。  
 
-## 🏷️ v1.2
+## 🏷️ v1.2 (2025.7.22)
 
 1. 升级Dex1_1夹爪控制代码，匹配 [dex1_1 service](https://github.com/unitreerobotics/dex1_1_service) 驱动
 
-## 🏷️ v1.1
+## 🏷️ v1.1 (2025.7.18)
 
 1. 末端执行器类型新增'brainco'，这是[强脑科技第二代灵巧手](https://www.brainco-hz.com/docs/revolimb-hand/)
 2. 为避免与实机部署时发生冲突，将仿真模式下的 dds 通道的domain id修改为1
 3. 修复默认频率过高的问题
 
-## 🏷️ v1.0 (newvuer)
+## 🏷️ v1.0 (newvuer)(2025.7.8)
 
 1. 升级 [Vuer](https://github.com/vuer-ai/vuer) 库至 v0.0.60 版本，XR设备支持模式扩展为**手部跟踪**和**控制器跟踪**两种。为更准确反映功能范围，项目由 **avp_teleoperate** 更名为 **xr_teleoperate**。
 
@@ -64,7 +72,7 @@
 
 5. 其他一些优化
 
-## 🏷️ v0.5 (oldvuer)
+## 🏷️ v0.5 (oldvuer) (2025.4.30)
 
 1. 该版本曾经命名为 `avp_teleoperate`
 2. 支持 'G1_29', 'G1_23', 'H1_2', 'H1' 机器人类型
