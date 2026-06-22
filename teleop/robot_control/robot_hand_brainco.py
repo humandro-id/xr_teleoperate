@@ -53,9 +53,9 @@ class Brainco_Controller_ctrl:
         self.subscribe_state_thread.daemon = True
         self.subscribe_state_thread.start()
 
-        while not self.hand_sub_ready:
-            time.sleep(0.1)
-            logger_mp.warning("[Brainco_Controller_ctrl] Waiting to subscribe dds...")
+        #while not self.hand_sub_ready:
+        #    time.sleep(0.1)
+        #    logger_mp.warning("[Brainco_Controller_ctrl] Waiting to subscribe dds...")
         logger_mp.info("[Brainco_Controller_ctrl] Subscribe dds ok.")
 
         hand_control_process = Process(target=self.control_process, args=(left_gripper_trigger_in, left_gripper_squeeze_in, right_gripper_trigger_in, right_gripper_squeeze_in, 
@@ -140,7 +140,7 @@ class Brainco_Controller_ctrl:
                     left_triger_value = (10.0 - left_trigger_value) / 10.0
                     left_q_target[0]  = np.clip((left_triger_value - 0.5) / 0.5, 0.0, 0.98) # thumb-aux
                     left_q_target[1]  = np.clip(left_triger_value / 0.5, 0.0, 0.7) # thumb
-                    left_q_target[2]  = np.clip(left_squeeze_value, 0.0, 0.98)                   # index
+                    left_q_target[2]  = np.clip(left_triger_value, 0.0, 0.98)                   # index
                     left_q_target[3]  = np.clip(left_triger_value, 0.0, 0.98)   # middle
                     left_q_target[4]  = np.clip(left_triger_value, 0.0, 0.98)   # ring
                     left_q_target[5]  = np.clip(left_triger_value, 0.0, 0.98)   # pinky
@@ -148,7 +148,7 @@ class Brainco_Controller_ctrl:
                     right_triger_value = (10.0 - right_trigger_value) / 10.0
                     right_q_target[0] = np.clip((right_triger_value - 0.5) / 0.5, 0.0, 0.98)
                     right_q_target[1] = np.clip(right_triger_value / 0.5, 0.0, 0.7)
-                    right_q_target[2] = np.clip(right_squeeze_value, 0.0, 0.98)                  # index
+                    right_q_target[2] = np.clip(right_triger_value, 0.0, 0.98)                  # index
                     right_q_target[3] = np.clip(right_triger_value, 0.0, 0.98)  # middle
                     right_q_target[4] = np.clip(right_triger_value, 0.0, 0.98)  # ring
                     right_q_target[5] = np.clip(right_triger_value, 0.0, 0.98)  # pinky
@@ -204,9 +204,9 @@ class Brainco_Controller_hand:
         self.subscribe_state_thread.daemon = True
         self.subscribe_state_thread.start()
 
-        while not self.hand_sub_ready:
-            time.sleep(0.1)
-            logger_mp.warning("[Brainco_Controller_hand] Waiting to subscribe dds...")
+        #while not self.hand_sub_ready:
+        #    time.sleep(0.1)
+        #    logger_mp.warning("[Brainco_Controller_hand] Waiting to subscribe dds...")
         logger_mp.info("[Brainco_Controller_hand] Subscribe dds ok.")
 
         hand_control_process = Process(target=self.control_process, args=(left_hand_array, right_hand_array,  self.left_hand_state_array, self.right_hand_state_array,
