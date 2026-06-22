@@ -87,6 +87,7 @@ class G1_29_ArmController:
         self._gradual_time = None
 
         if self.motion_mode:
+            print("Motion Mode")
             self.lowcmd_publisher = ChannelPublisher(kTopicLowCommand_Motion, hg_LowCmd)
         else:
             self.lowcmd_publisher = ChannelPublisher(kTopicLowCommand_Debug, hg_LowCmd)
@@ -368,20 +369,6 @@ class G1_23_ArmController:
         self._gradual_start_time = None
         self._gradual_time = None
 
-<<<<<<< HEAD
-        # initialize lowcmd publisher and lowstate subscriber
-        # Initialize DDS domain (only first call takes effect)
-        # MUST specify network interface for inter-process communication!
-        try:
-            if self.simulation_mode:
-                ChannelFactoryInitialize(1, "enp39s0")  # same network interface for same-host communication
-            else:
-                ChannelFactoryInitialize(0)  # real robot uses default interface
-        except Exception as e:
-            # May already be initialized - that's okay
-            pass
-=======
->>>>>>> unitree/main
         
         if self.motion_mode:
             self.lowcmd_publisher = ChannelPublisher(kTopicLowCommand_Motion, hg_LowCmd)
@@ -656,21 +643,6 @@ class H1_2_ArmController:
         self._speed_gradual_max = False
         self._gradual_start_time = None
         self._gradual_time = None
-
-<<<<<<< HEAD
-        # initialize lowcmd publisher and lowstate subscriber
-        # Initialize DDS domain (only first call takes effect)
-        # MUST specify network interface for inter-process communication!
-        try:
-            if self.simulation_mode:
-                ChannelFactoryInitialize(1, "enp39s0")  # same network interface for same-host communication
-            else:
-                ChannelFactoryInitialize(0)  # real robot uses default interface
-        except Exception as e:
-            # May already be initialized - that's okay
-            pass
-=======
->>>>>>> unitree/main
 
         if self.motion_mode:
             self.lowcmd_publisher = ChannelPublisher(kTopicLowCommand_Motion, hg_LowCmd)
@@ -950,20 +922,6 @@ class H1_ArmController:
         self._gradual_start_time = None
         self._gradual_time = None
 
-<<<<<<< HEAD
-        # initialize lowcmd publisher and lowstate subscriber
-        # Initialize DDS domain (only first call takes effect)
-        # MUST specify network interface for inter-process communication!
-        try:
-            if self.simulation_mode:
-                ChannelFactoryInitialize(1, "enp39s0")  # same network interface for same-host communication
-            else:
-                ChannelFactoryInitialize(0)  # real robot uses default interface
-        except Exception as e:
-            # May already be initialized - that's okay
-            pass
-=======
->>>>>>> unitree/main
         self.lowcmd_publisher = ChannelPublisher(kTopicLowCommand_Debug, go_LowCmd)
         self.lowcmd_publisher.Init()
         self.lowstate_subscriber = ChannelSubscriber(kTopicLowState, go_LowState)
