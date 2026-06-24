@@ -177,19 +177,6 @@ class Inspire_Controller_FTP:
         else:
             self.hand_retargeting = HandRetargeting(HandType.INSPIRE_HAND_Unit_Test)
 
-<<<<<<< HEAD
-        # Initialize DDS domain - may already be initialized by robot_arm
-        # MUST specify network interface for inter-process communication!
-        try:
-            if self.simulation_mode:
-                ChannelFactoryInitialize(1, "enp39s0")  # same network interface for same-host communication
-            else:
-                ChannelFactoryInitialize(0)  # real robot uses default interface
-        except Exception as e:
-            # Already initialized - this is fine
-            pass
-=======
->>>>>>> unitree/main
 
         # Initialize hand command publishers
         self.LeftHandCmd_publisher = ChannelPublisher(kTopicInspireFTPLeftCommand, inspire_dds.inspire_hand_ctrl)

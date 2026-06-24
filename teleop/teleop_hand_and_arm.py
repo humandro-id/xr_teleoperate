@@ -14,17 +14,35 @@ sys.path.append(parent_dir)
 
 from unitree_sdk2py.core.channel import ChannelFactoryInitialize # dds 
 from televuer import TeleVuerWrapper
-from teleop.robot_control.robot_arm import G1_29_ArmController, G1_23_ArmController, H1_2_ArmController, H1_ArmController, H2_ArmController
-from teleop.robot_control.robot_arm_ik import G1_29_ArmIK, G1_23_ArmIK, H1_2_ArmIK, H1_ArmIK, H2_ArmIK
+from teleop.robot_control.robot_arm import G1_29_ArmController, G1_23_ArmController, H1_2_ArmController, H1_ArmController
+from teleop.robot_control.robot_arm_ik import G1_29_ArmIK, G1_23_ArmIK, H1_2_ArmIK, H1_ArmIK
+from teleop.robot_control.robot_hand_unitree import Dex3_1_Controller, Dex1_1_Gripper_Controller
+from teleop.robot_control.robot_hand_inspire import Inspire_Controller_DFX, Inspire_Controller_FTP
+from teleop.robot_control.robot_hand_inspire_senseglove import Inspire_Controller_SenseGlove, apply_senseglove_mount_offset
+from teleop.robot_control.robot_hand_brainco import Brainco_Controller_ctrl, Brainco_Controller_hand
 from teleimager.image_client import ImageClient
 from teleop.utils.episode_writer import EpisodeWriter
 from teleop.utils.ipc import IPC_Server
 from teleop.utils.motion_switcher import MotionSwitcher, LocoClientWrapper
 from sshkeyboard import listen_keyboard, stop_listening
+from dotenv import load_dotenv
+import asyncio
+
+try:
+    import nats
+    NATS_AVAILABLE = True
+except ImportError:
+    NATS_AVAILABLE = False
+    print("⚠️  NATS no disponible. Instalar con: pip install nats-py")
+
+if NATS_AVAILABLE:
+    from nats.js.api import StreamConfig, RetentionPolicy, DiscardPolicy, StorageType
+
 
 # for simulation
 from unitree_sdk2py.core.channel import ChannelPublisher
 from unitree_sdk2py.idl.std_msgs.msg.dds_ import String_
+
 def publish_reset_category(category: int, publisher): # Scene Reset signal
     msg = String_(data=str(category))
     publisher.Write(msg)
@@ -36,17 +54,9 @@ STOP           = False  # Enable to begin system exit procedure
 READY          = False  # Ready to (1) enter START state, (2) enter RECORD_RUNNING state
 RECORD_RUNNING = False  # True if [Recording]
 RECORD_TOGGLE  = False  # Toggle recording state
-#  -------        ---------                -----------                -----------            ---------
-#   state          [Ready]      ==>        [Recording]     ==>         [AutoSave]     -->     [Ready]
-#  -------        ---------      |         -----------      |         -----------      |     ---------
-#   START           True         |manual      True          |manual      True          |        True
-#   READY           True         |set         False         |set         False         |auto    True
-#   RECORD_RUNNING  False        |to          True          |to          False         |        False
-#                                ∨                          ∨                          ∨
-#   RECORD_TOGGLE   False       True          False        True          False                  False
-#  -------        ---------                -----------                 -----------            ---------
-#  ==> manual: when READY is True, set RECORD_TOGGLE=True to transition.
-#  --> auto  : Auto-transition after saving data.
+js = None
+nats_client = None
+
 
 def on_press(key):
     global STOP, START, RECORD_TOGGLE
@@ -70,15 +80,129 @@ def get_state() -> dict:
         "RECORD_RUNNING": RECORD_RUNNING,
     }
 
+async def setup_jetstream(stream_name, video_subject):
+    """Configura el Stream para video de alta velocidad."""
+    global js
+    try:
+        js = nats_client.jetstream()
+        
+        config = StreamConfig(
+            name=stream_name,
+            subjects=[video_subject],
+            retention=RetentionPolicy.LIMITS,
+            max_msgs=1,        
+            max_bytes=-1,
+            discard=DiscardPolicy.OLD, 
+            max_age=1.0,      
+            storage=StorageType.MEMORY, 
+        )
+        
+        await js.add_stream(config=config)
+        logger_mp.info(f'🚀 JetStream Stream "{stream_name}" configurado OK')
+    except Exception as e:
+        logger_mp.warn(f'⚠️ Aviso JetStream setup: {e}')
+
+def _start_nats_listener(nats_server, subject, stream_name, subject_name):
+    """Inicia el listener de NATS en un hilo separado."""
+    def run_nats():
+        nats_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(nats_loop)
+        nats_loop.run_until_complete(nats_handler(nats_server, subject, stream_name, subject_name))
+    
+    nats_thread = threading.Thread(target=run_nats, daemon=True)
+    nats_thread.start()
+    logger_mp.info(f'📡 NATS listener iniciado: {nats_server} [{subject}]')
+
+
+async def nats_handler(nats_server, subject, stream_name, subject_name):
+    """Handler asíncrono para mensajes NATS."""
+    global nats_client
+    try:
+        async def disconnected_cb():
+            nats_connected = False
+            logger_mp.warn('⚠️ NATS desconectado')
+        async def reconnected_cb():
+            connected = True
+            logger_mp.info(f'🔄 NATS reconectado: {nats_server}')
+            await publish_nats_connection_status(1, nats_server)
+        async def closed_cb():
+            nats_connected = False
+            logger_mp.warn('⛔ Conexión NATS cerrada')
+        nats_client = await nats.connect(
+            nats_server,
+            disconnected_cb=disconnected_cb,
+            reconnected_cb=reconnected_cb,
+            closed_cb=closed_cb,
+        )
+        nats_connected = True
+        logger_mp.info(f'✅ Conectado a NATS: {nats_server}')
+        await publish_nats_connection_status(1, nats_server)
+        await setup_jetstream(stream_name, subject_name)
+        
+        async def message_handler(msg):
+            command = msg.data.decode().strip().lower()
+            logger_mp.info(f'📩 NATS comando recibido: {command}')
+            handle_nats_command(command)
+        
+        await nats_client.subscribe(subject, cb=message_handler)
+        
+        while True:
+            await asyncio.sleep(1)
+            
+    except Exception as e:
+        nats_connected = False
+        await publish_nats_connection_status(0, nats_server)
+        logger_mp.error(f'❌ Error NATS: {e}')
+
+async def publish_nats_connection_status(status: int, nats_server):
+        """Publica estado de conexión a NATS: 1=conectado, 0=desconectado."""
+        global nats_client
+        if nats_client:
+            return
+        try:
+            await nats_client.publish(nats_server, str(status).encode())
+            await nats_client.flush(timeout=1)
+            logger_mp.info(f'📶 Estado NATS publicado en "{nats_server}": {status}')
+        except Exception as e:
+            logger_mp.warn(f'⚠️ No se pudo publicar estado NATS ({status}): {e}')
+
+async def _async_publish_video(jpg_bytes, subject):
+    """Corutina para publicar bytes a JetStream."""
+    if js:
+        try:
+            await js.publish(subject, jpg_bytes)
+        except Exception:
+            pass 
+
+def handle_nats_command(command: str):
+    """Procesa comandos recibidos por NATS."""
+    global STOP, START, RECORD_TOGGLE
+    if command == 'start':
+        print("\n>>> 📡 NATS: INICIANDO TELEOPERACIÓN <<<")
+        START = True
+        print(">>> 🟢 TELEOPERACIÓN INICIADA\n")
+            
+    elif command == 'record' and START == True:
+        RECORD_TOGGLE = True
+            
+    elif command == 'stop_record':
+        RECORD_TOGGLE = True
+            
+    elif command == 'quit':
+        print("\n>>> 📡 NATS: CERRANDO... <<<")
+        START = False
+        STOP = True
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # basic control parameters
     parser.add_argument('--frequency', type = float, default = 30.0, help = 'control and record \'s frequency')
     parser.add_argument('--input-mode', type=str, choices=['hand', 'controller'], default='hand', help='Select XR device input tracking source')
     parser.add_argument('--display-mode', type=str, choices=['immersive', 'ego', 'pass-through'], default='immersive', help='Select XR device display mode')
-    parser.add_argument('--arm', type=str, choices=['G1_29', 'G1_23', 'H1_2', 'H1', 'H2'], default='G1_29', help='Select arm controller')
-    parser.add_argument('--ee', type=str, choices=['dex1', 'dex3', 'inspire_ftp', 'inspire_dfx', 'brainco'], help='Select end effector controller')
-    # network parameters
+    parser.add_argument('--arm', type=str, choices=['G1_29', 'G1_23', 'H1_2', 'H1'], default='G1_29', help='Select arm controller')
+    parser.add_argument('--ee', type=str, choices=['dex1', 'dex3', 'inspire_ftp', 'inspire_dfx', 'inspire_ftp_sg', 'brainco'], help='Select end effector controller')
+    parser.add_argument('--left-glove-topic', type=str, default='/senseglove/glove00799/lh/joint_states', help='ROS2 topic for left SenseGlove joint_states')
+    parser.add_argument('--right-glove-topic', type=str, default='/senseglove/glove00768/rh/joint_states', help='ROS2 topic for right SenseGlove joint_states')
     parser.add_argument('--img-server-ip', type=str, default='192.168.123.164', help='IP address of image server, used by teleimager and televuer')
     parser.add_argument('--network-interface', type=str, default=None, help='Network interface for dds communication, e.g., eth0, wlan0. If None, use default interface.')
     # mode flags
@@ -97,6 +221,17 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     logger_mp.debug(f"args: {args}")
+
+    load_dotenv()
+
+    nats_servers = os.getenv("NATS_SERVER", "nats://192.168.30.88:4222")
+    robot_id = os.getenv("ROBOT_ID", 1)
+    subject = f'g1.{robot_id}.command'
+    stream_name = 'G1_VIDEO'
+    subject_name = f'g1.{robot_id}.camera'
+
+    if NATS_AVAILABLE:
+        _start_nats_listener(nats_servers, subject, stream_name, subject_name)
 
     try:
         # setup dds communication domains id
@@ -199,9 +334,21 @@ if __name__ == '__main__':
             dual_hand_data_lock = Lock()
             dual_hand_state_array = Array('d', 12, lock = False)   # [output] current left, right hand state(12) data.
             dual_hand_action_array = Array('d', 12, lock = False)  # [output] current left, right hand action(12) data.
-            hand_ctrl = Inspire_Controller_FTP(left_hand_pos_array, right_hand_pos_array, dual_hand_data_lock, dual_hand_state_array, dual_hand_action_array, simulation_mode=args.sim, xr_motion_data_ready_in=xr_motion_data_ready)
+            hand_ctrl = Inspire_Controller_FTP(left_hand_pos_array, right_hand_pos_array, dual_hand_data_lock, dual_hand_state_array, dual_hand_action_array, simulation_mode=args.sim)
+        elif args.ee == "inspire_ftp_sg":
+            dual_hand_data_lock = Lock()
+            dual_hand_state_array = Array('d', 12, lock = False)   # [output] current left, right hand state(12) data.
+            dual_hand_action_array = Array('d', 12, lock = False)  # [output] current left, right hand action(12) data.
+            logger_mp.info("Por entrar al inspire controller SenseGlove")
+            hand_ctrl = Inspire_Controller_SenseGlove(
+                dual_hand_data_lock=dual_hand_data_lock,
+                dual_hand_state_array=dual_hand_state_array,
+                dual_hand_action_array=dual_hand_action_array,
+                simulation_mode=args.sim,
+                left_glove_topic=args.left_glove_topic,
+                right_glove_topic=args.right_glove_topic,
+            )
         elif args.ee == "brainco" and args.input_mode == "hand":
-            from teleop.robot_control.robot_hand_brainco import Brainco_Controller_hand
             left_hand_pos_array = Array('d', 75, lock = True)      # [input]
             right_hand_pos_array = Array('d', 75, lock = True)     # [input]
             dual_hand_data_lock = Lock()
@@ -210,7 +357,6 @@ if __name__ == '__main__':
             hand_ctrl = Brainco_Controller_hand(left_hand_pos_array, right_hand_pos_array, dual_hand_data_lock, 
                                                 dual_hand_state_array, dual_hand_action_array, simulation_mode=args.sim, xr_motion_data_ready_in=xr_motion_data_ready)
         elif args.ee == "brainco" and args.input_mode == "controller":
-            from teleop.robot_control.robot_hand_brainco import Brainco_Controller_ctrl
             left_gripper_trigger_in = Value('d', 10.0, lock=True)  # [input]
             left_gripper_squeeze_in = Value('d', 0.0, lock=True)   # [input]
             right_gripper_trigger_in = Value('d', 10.0, lock=True) # [input]
@@ -256,7 +402,7 @@ if __name__ == '__main__':
                                      task_desc = args.task_desc,
                                      task_steps = args.task_steps,
                                      frequency = args.frequency, 
-                                     rerun_log = not args.headless)
+                                     rerun_log = False)
 
         logger_mp.info("----------------------------------------------------------------")
         logger_mp.info("🟢  Press [r] to start syncing the robot with your movements.")
@@ -313,6 +459,9 @@ if __name__ == '__main__':
 
             # get xr's tele data
             tele_data = tv_wrapper.get_tele_data()
+            left_wrist = tele_data.left_wrist_pose
+            right_wrist = tele_data.right_wrist_pose
+
             if args.ee in ("dex3", "inspire_ftp", "inspire_dfx", "brainco")  and args.input_mode == "hand":
                 with left_hand_pos_array.get_lock():
                     left_hand_pos_array[:] = tele_data.left_hand_pos.flatten()
@@ -337,6 +486,10 @@ if __name__ == '__main__':
                     left_gripper_value.value = tele_data.left_hand_pinchValue
                 with right_gripper_value.get_lock():
                     right_gripper_value.value = tele_data.right_hand_pinchValue
+            elif args.ee == "inspire_ftp_sg":
+                left_wrist = apply_senseglove_mount_offset(left_wrist, is_right=False)
+                right_wrist = apply_senseglove_mount_offset(right_wrist)
+                #pass  # SenseGlove data arrives independently via ROS2
             else:
                 pass
             with xr_motion_data_ready.get_lock():
@@ -362,7 +515,7 @@ if __name__ == '__main__':
 
             # solve ik using motor data and wrist pose, then use ik results to control arms.
             time_ik_start = time.time()
-            sol_q, sol_tauff  = arm_ik.solve_ik(tele_data.left_wrist_pose, tele_data.right_wrist_pose, current_lr_arm_q, current_lr_arm_dq)
+            sol_q, sol_tauff  = arm_ik.solve_ik(left_wrist, right_wrist, current_lr_arm_q, current_lr_arm_dq)
             time_ik_end = time.time()
             logger_mp.debug(f"ik:\t{round(time_ik_end - time_ik_start, 6)}")
             arm_ctrl.ctrl_dual_arm(sol_q, sol_tauff)
@@ -431,37 +584,30 @@ if __name__ == '__main__':
                 if RECORD_RUNNING:
                     colors = {}
                     depths = {}
-                    if camera_config['head_camera']['binocular']:
-                        if head_img is not None:
-                            colors[f"color_{0}"] = head_img.bgr[:, :camera_config['head_camera']['image_shape'][1]//2]
-                            colors[f"color_{1}"] = head_img.bgr[:, camera_config['head_camera']['image_shape'][1]//2:]
+                    color_idx = 0
+                    if head_img is not None and head_img.bgr is not None:
+                        head_bgr = head_img.bgr
+                        head_mono_w = camera_config['head_camera']['image_shape'][1] // 2
+                        # RealSense head stream may still be side-by-side stereo over ZMQ.
+                        if head_bgr.shape[1] >= 2 * head_mono_w:
+                            colors[f"color_{color_idx}"] = head_bgr[:, :head_mono_w]
                         else:
-                            logger_mp.warning("Head image is None!")
-                        if camera_config['left_wrist_camera']['enable_zmq']:
-                            if left_wrist_img is not None:
-                                colors[f"color_{2}"] = left_wrist_img.bgr
-                            else:
-                                logger_mp.warning("Left wrist image is None!")
-                        if camera_config['right_wrist_camera']['enable_zmq']:
-                            if right_wrist_img is not None:
-                                colors[f"color_{3}"] = right_wrist_img.bgr
-                            else:
-                                logger_mp.warning("Right wrist image is None!")
+                            colors[f"color_{color_idx}"] = head_bgr
+                        color_idx += 1
                     else:
-                        if head_img is not None:
-                            colors[f"color_{0}"] = head_img.bgr
+                        logger_mp.warning("Head image is None!")
+                    if camera_config['left_wrist_camera']['enable_zmq']:
+                        if left_wrist_img is not None:
+                            colors[f"color_{color_idx}"] = left_wrist_img.bgr
+                            color_idx += 1
                         else:
-                            logger_mp.warning("Head image is None!")
-                        if camera_config['left_wrist_camera']['enable_zmq']:
-                            if left_wrist_img is not None:
-                                colors[f"color_{1}"] = left_wrist_img.bgr
-                            else:
-                                logger_mp.warning("Left wrist image is None!")
-                        if camera_config['right_wrist_camera']['enable_zmq']:
-                            if right_wrist_img is not None:
-                                colors[f"color_{2}"] = right_wrist_img.bgr
-                            else:
-                                logger_mp.warning("Right wrist image is None!")
+                            logger_mp.warning("Left wrist image is None!")
+                    if camera_config['right_wrist_camera']['enable_zmq']:
+                        if right_wrist_img is not None:
+                            colors[f"color_{color_idx}"] = right_wrist_img.bgr
+                            color_idx += 1
+                        else:
+                            logger_mp.warning("Right wrist image is None!")
                     states = {
                         "left_arm": {                                                                    
                             "qpos":   left_arm_state.tolist(),    # numpy.array -> list
