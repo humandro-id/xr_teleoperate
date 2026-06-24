@@ -415,6 +415,17 @@ if __name__ == '__main__':
         READY = True                  # now ready to (1) enter START state
         while not START and not STOP: # wait for start or stop signal.
             time.sleep(0.033)
+            # 1. Leemos los datos del Meta Quest en tiempo real mientras esperamos
+            try:
+                tele_data = tv_wrapper.get_tele_data()
+                if tele_data is not None:
+                    # Si el operador presiona el botón X del control izquierdo, se inicia la teleoperación
+                    if hasattr(tele_data, 'left_ctrl_aButton') and tele_data.left_ctrl_aButton:
+                        logger_mp.info("🎯 ¡Botón X detectado! Sincronizando movimientos del robot...")
+                        START = True
+            except Exception as e:
+                # Evita que el script se detenga si los primeros frames de tele_data vienen vacíos
+                pass
             if camera_config['head_camera']['enable_zmq'] and xr_need_local_img:
                 head_img = img_client.get_head_frame()
                 if head_img.bgr is not None:
