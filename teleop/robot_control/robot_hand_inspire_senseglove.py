@@ -23,7 +23,7 @@ from multiprocessing import Process, Array
 
 from std_msgs.msg import Float64MultiArray
 import logging_mp
-logger_mp = logging_mp.getLogger(__name__)
+logger_mp = logging_mp.get_logger(__name__)
 
 Inspire_Num_Motors = 6
 
@@ -32,8 +32,8 @@ kTopicInspireFTPRightCommand = "rt/inspire_hand/ctrl/r"
 kTopicInspireFTPLeftState    = "rt/inspire_hand/state/l"
 kTopicInspireFTPRightState   = "rt/inspire_hand/state/r"
 
-DEFAULT_LEFT_GLOVE_TOPIC  = "/senseglove/glove00799/lh/joint_states"
-DEFAULT_RIGHT_GLOVE_TOPIC = "/senseglove/glove00768/rh/joint_states"
+DEFAULT_LEFT_GLOVE_TOPIC  = "/senseglove/glove00801/lh/joint_states"
+DEFAULT_RIGHT_GLOVE_TOPIC = "/senseglove/glove00804/rh/joint_states"
 
 # Typical max flexion (rad) per finger for the SenseGlove Nova 2.
 # Tune these if the mapping feels too sensitive or too sluggish.
@@ -83,8 +83,8 @@ NUM_HAPTICS_JOINTS = 9
 
 #LEFT_HAPTICS_TOPIC  = '/senseglove/glove00801/lh/haptics_controller/joint_trajectory'
 #RIGHT_HAPTICS_TOPIC = '/senseglove/glove00804/rh/haptics_controller/joint_trajectory'
-LEFT_HAPTICS_TOPIC  = '/senseglove/glove00799/lh/haptics_commands'
-RIGHT_HAPTICS_TOPIC = '/senseglove/glove00768/rh/haptics_commands'
+LEFT_HAPTICS_TOPIC  = '/senseglove/glove00801/lh/haptics_commands'
+RIGHT_HAPTICS_TOPIC = '/senseglove/glove00804/rh/haptics_commands'
 
 # Inspire DOF → SenseGlove brake index mapping
 # Inspire: [0:pinky, 1:ring, 2:middle, 3:index, 4:thumb_bend, 5:thumb_rot]
@@ -101,8 +101,8 @@ HAPTIC_FORCE_DEADZONE = 200
 HAPTIC_FORCE_MAX = 3300# Inspire force_act: 0–4096.  Dead zone below 200, full brake at 4096.
 
 # REotation functions for headset controllers
-SG_MOUNT_OFFSET_EULER_DEG_RIGHT = (-135.0, 0.0, 0.0)   # (rx, ry, rz)
-SG_MOUNT_OFFSET_EULER_DEG_LEFT = (135.0, 0.0, 0.0)   # (rx, ry, rz)
+SG_MOUNT_OFFSET_EULER_DEG_RIGHT = (-180.0, 180.0, 0.0)   # (rx, ry, rz) 
+SG_MOUNT_OFFSET_EULER_DEG_LEFT = (180.0, 180.0, 0.0)   # (rx, ry, rz)   
 SG_MOUNT_OFFSET_EULER_DEG = (-45.0, 0.0, 0.0)   # (rx, ry, rz)
 SG_MOUNT_OFFSET_POS = (0.0, 0.0, 0.0)            # (x, y, z) in metres
 
