@@ -15,6 +15,8 @@ SenseGlove Nova 2 gloves provide finger tracking.
 from unitree_sdk2py.core.channel import (
     ChannelPublisher, ChannelSubscriber, ChannelFactoryInitialize,
 )
+from unitree_sdk2py.idl.unitree_go.msg.dds_ import MotorCmds_, MotorStates_
+from unitree_sdk2py.idl.default import unitree_go_msg_dds__MotorCmd_
 from inspire_sdkpy import inspire_dds, inspire_hand_defaut
 import numpy as np
 import threading
@@ -27,10 +29,23 @@ logger_mp = logging_mp.get_logger(__name__)
 
 Inspire_Num_Motors = 6
 
+# ── Real Inspire FTP hand (hardware) topics ──────────────────────────
 kTopicInspireFTPLeftCommand  = "rt/inspire_hand/ctrl/l"
 kTopicInspireFTPRightCommand = "rt/inspire_hand/ctrl/r"
 kTopicInspireFTPLeftState    = "rt/inspire_hand/state/l"
 kTopicInspireFTPRightState   = "rt/inspire_hand/state/r"
+
+# ── unitree_sim_isaaclab (simulation) topics ─────────────────────────
+# The simulator's InspireDDS subscribes to a single MotorCmds_ message
+# with 12 motors: indices 0-5 = RIGHT hand, 6-11 = LEFT hand, in order
+# [pinky, ring, middle, index, thumb_bend, thumb_rotation].
+# q values are normalised floats in [0, 1] where 1.0 = fully open
+# (the sim denormalises them to joint radians internally).
+kTopicInspireSimCommand = "rt/inspire/cmd"
+kTopicInspireSimState   = "rt/inspire/state"
+SIM_RIGHT_HAND_OFFSET = 0   # cmds[0..5]  → right hand
+SIM_LEFT_HAND_OFFSET  = 6   # cmds[6..11] → left hand
+SIM_NUM_MOTORS_TOTAL  = 12
 
 DEFAULT_LEFT_GLOVE_TOPIC  = "/senseglove/glove00801/lh/joint_states"
 DEFAULT_RIGHT_GLOVE_TOPIC = "/senseglove/glove00804/rh/joint_states"
@@ -385,29 +400,43 @@ class Inspire_Controller_SenseGlove:
         self.simulation_mode = simulation_mode
 
         # ---- DDS init (may already be initialised by robot_arm) -----------
+        # NOTE: the simulator calls ChannelFactoryInitialize(1) with the
+        # default network interface. Using the same signature here avoids
+        # publisher/subscriber discovery mismatches across interfaces.
         try:
             if self.simulation_mode:
-                ChannelFactoryInitialize(1, "enp39s0")
+                ChannelFactoryInitialize(1)
             else:
                 ChannelFactoryInitialize(0)
         except Exception:
             pass
 
-        # ---- DDS publishers (Inspire commands) ----------------------------
-        self.LeftHandCmd_pub = ChannelPublisher(
-            kTopicInspireFTPLeftCommand, inspire_dds.inspire_hand_ctrl)
-        self.LeftHandCmd_pub.Init()
-        self.RightHandCmd_pub = ChannelPublisher(
-            kTopicInspireFTPRightCommand, inspire_dds.inspire_hand_ctrl)
-        self.RightHandCmd_pub.Init()
+        if self.simulation_mode:
+            # ---- Simulation: single MotorCmds_ publisher (rt/inspire/cmd) --
+            self.SimHandCmd_pub = ChannelPublisher(
+                kTopicInspireSimCommand, MotorCmds_)
+            self.SimHandCmd_pub.Init()
 
-        # ---- DDS subscribers (Inspire state feedback) ---------------------
-        self.LeftHandState_sub = ChannelSubscriber(
-            kTopicInspireFTPLeftState, inspire_dds.inspire_hand_state)
-        self.LeftHandState_sub.Init()
-        self.RightHandState_sub = ChannelSubscriber(
-            kTopicInspireFTPRightState, inspire_dds.inspire_hand_state)
-        self.RightHandState_sub.Init()
+            # ---- Simulation: MotorStates_ subscriber (rt/inspire/state) ----
+            self.SimHandState_sub = ChannelSubscriber(
+                kTopicInspireSimState, MotorStates_)
+            self.SimHandState_sub.Init()
+        else:
+            # ---- Real hand: FTP per-hand publishers -------------------------
+            self.LeftHandCmd_pub = ChannelPublisher(
+                kTopicInspireFTPLeftCommand, inspire_dds.inspire_hand_ctrl)
+            self.LeftHandCmd_pub.Init()
+            self.RightHandCmd_pub = ChannelPublisher(
+                kTopicInspireFTPRightCommand, inspire_dds.inspire_hand_ctrl)
+            self.RightHandCmd_pub.Init()
+
+            # ---- Real hand: FTP per-hand state subscribers ------------------
+            self.LeftHandState_sub = ChannelSubscriber(
+                kTopicInspireFTPLeftState, inspire_dds.inspire_hand_state)
+            self.LeftHandState_sub.Init()
+            self.RightHandState_sub = ChannelSubscriber(
+                kTopicInspireFTPRightState, inspire_dds.inspire_hand_state)
+            self.RightHandState_sub.Init()
 
         # ---- Shared arrays ------------------------------------------------
         self.left_hand_state_array  = Array('d', Inspire_Num_Motors, lock=True)
@@ -423,11 +452,14 @@ class Inspire_Controller_SenseGlove:
                     arr[i] = 1.0  # open
 
         # ---- ROS2 SenseGlove subscriber + haptic publisher -----------------
+        # In simulation the Inspire hand has no force_act feedback, so we
+        # skip haptics publishing entirely (force arrays would stay at 0).
         try:
             self.ros2_bridge = SenseGloveROS2Bridge(
                 left_glove_topic, right_glove_topic,
                 self.sg_left_mapped, self.sg_right_mapped,
-                self.left_hand_force_array, self.right_hand_force_array,
+                None if self.simulation_mode else self.left_hand_force_array,
+                None if self.simulation_mode else self.right_hand_force_array,
             )
         except Exception as e:
             print(e)
@@ -464,6 +496,33 @@ class Inspire_Controller_SenseGlove:
     # ---- DDS state feedback -----------------------------------------------
 
     def _subscribe_hand_state(self):
+        if self.simulation_mode:
+            self._subscribe_hand_state_sim()
+        else:
+            self._subscribe_hand_state_real()
+
+    def _subscribe_hand_state_sim(self):
+        """Read MotorStates_ from the simulator (rt/inspire/state).
+
+        The sim publishes 12 motor states with q already normalised to
+        [0, 1] (1 = open): indices 0-5 = right hand, 6-11 = left hand.
+        There is no force feedback in simulation.
+        """
+        logger_mp.info("[SenseGlove] DDS state subscribe thread started (SIM mode).")
+        while True:
+            msg = self.SimHandState_sub.Read()
+            if msg is not None and len(msg.states) >= SIM_NUM_MOTORS_TOTAL:
+                with self.right_hand_state_array.get_lock():
+                    for i in range(Inspire_Num_Motors):
+                        self.right_hand_state_array[i] = float(
+                            msg.states[SIM_RIGHT_HAND_OFFSET + i].q)
+                with self.left_hand_state_array.get_lock():
+                    for i in range(Inspire_Num_Motors):
+                        self.left_hand_state_array[i] = float(
+                            msg.states[SIM_LEFT_HAND_OFFSET + i].q)
+            time.sleep(0.002)
+
+    def _subscribe_hand_state_real(self):
         logger_mp.info("[SenseGlove] DDS state subscribe thread started.")
         force_logged = False
         while True:
@@ -499,6 +558,7 @@ class Inspire_Controller_SenseGlove:
     # ---- DDS command publishing -------------------------------------------
 
     def _send_hand_command(self, left_scaled, right_scaled):
+        """Real Inspire FTP hand: angle_set in 0-1000 per hand."""
         left_cmd = inspire_hand_defaut.get_inspire_hand_ctrl()
         left_cmd.angle_set = left_scaled
         left_cmd.mode = 0b0001
@@ -508,6 +568,20 @@ class Inspire_Controller_SenseGlove:
         right_cmd.angle_set = right_scaled
         right_cmd.mode = 0b0001
         self.RightHandCmd_pub.Write(right_cmd)
+
+    def _send_hand_command_sim(self, left_q, right_q):
+        """unitree_sim_isaaclab: single MotorCmds_ on rt/inspire/cmd.
+
+        left_q / right_q: floats in [0, 1] (1 = open), Inspire motor order
+        [pinky, ring, middle, index, thumb_bend, thumb_rotation] — the same
+        order the sim expects (right = cmds[0..5], left = cmds[6..11]).
+        """
+        for i in range(Inspire_Num_Motors):
+            self.sim_hand_msg.cmds[SIM_RIGHT_HAND_OFFSET + i].q = float(
+                np.clip(right_q[i], 0.0, 1.0))
+            self.sim_hand_msg.cmds[SIM_LEFT_HAND_OFFSET + i].q = float(
+                np.clip(left_q[i], 0.0, 1.0))
+        self.SimHandCmd_pub.Write(self.sim_hand_msg)
 
     # ---- Control loop (runs in child Process) -----------------------------
 
@@ -521,6 +595,15 @@ class Inspire_Controller_SenseGlove:
     ):
         logger_mp.info("[SenseGlove] Control process started.")
         self.running = True
+
+        if self.simulation_mode:
+            # pre-build the 12-motor MotorCmds_ message once (all open)
+            self.sim_hand_msg = MotorCmds_()
+            self.sim_hand_msg.cmds = [
+                unitree_go_msg_dds__MotorCmd_() for _ in range(SIM_NUM_MOTORS_TOTAL)
+            ]
+            for i in range(SIM_NUM_MOTORS_TOTAL):
+                self.sim_hand_msg.cmds[i].q = 1.0  # open
 
         try:
             while self.running:
@@ -536,16 +619,20 @@ class Inspire_Controller_SenseGlove:
                     np.array(right_hand_state_array[:]),
                 ))
 
-                scaled_left  = [int(np.clip(v * 1000, 0, 1000)) for v in left_q]
-                scaled_right = [int(np.clip(v * 1000, 0, 1000)) for v in right_q]
-
                 action_data = np.concatenate((left_q, right_q))
                 if dual_hand_state_array is not None and dual_hand_action_array is not None:
                     with dual_hand_data_lock:
                         dual_hand_state_array[:]  = state_data
                         dual_hand_action_array[:] = action_data
 
-                self._send_hand_command(scaled_left, scaled_right)
+                if self.simulation_mode:
+                    # sim expects normalised floats [0, 1] directly
+                    self._send_hand_command_sim(left_q, right_q)
+                else:
+                    # real FTP hand expects integers 0-1000
+                    scaled_left  = [int(np.clip(v * 1000, 0, 1000)) for v in left_q]
+                    scaled_right = [int(np.clip(v * 1000, 0, 1000)) for v in right_q]
+                    self._send_hand_command(scaled_left, scaled_right)
 
                 sleep_time = max(0, (1.0 / self.fps) - (time.time() - t0))
                 time.sleep(sleep_time)
