@@ -98,6 +98,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     logger_mp.debug(f"args: {args}")
 
+    image_size = [640, 360]
+
     try:
         # setup dds communication domains id
         if args.sim:
@@ -263,6 +265,7 @@ if __name__ == '__main__':
         # record + headless / non-headless mode
         if args.record:
             recorder = EpisodeWriter(task_dir = os.path.join(args.task_dir, args.task_name),
+                                     image_size = image_size,
                                      task_goal = args.task_goal,
                                      task_desc = args.task_desc,
                                      task_steps = args.task_steps,
