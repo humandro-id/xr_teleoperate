@@ -21,7 +21,7 @@ from teleop.robot_control.robot_hand_inspire import Inspire_Controller_DFX, Insp
 from teleop.robot_control.robot_hand_inspire_senseglove import Inspire_Controller_SenseGlove, apply_senseglove_mount_offset
 from teleop.robot_control.robot_hand_brainco import Brainco_Controller_ctrl, Brainco_Controller_hand
 from teleimager.image_client import ImageClient
-from teleop.utils.episode_writer import EpisodeWriter
+from teleop.utils.episode_writer import EpisodeWriter, build_joint_names
 from teleop.utils.ipc import IPC_Server
 from teleop.utils.motion_switcher import MotionSwitcher, LocoClientWrapper
 from sshkeyboard import listen_keyboard, stop_listening
@@ -402,9 +402,9 @@ if __name__ == '__main__':
                                      task_goal = args.task_goal,
                                      task_desc = args.task_desc,
                                      task_steps = args.task_steps,
-                                     frequency = args.frequency,
-                                     image_size = [head_w, head_h],
-                                     rerun_log = False)
+                                     frequency = args.frequency, 
+                                     rerun_log = False,
+                                     joint_names = build_joint_names(args.arm, args.ee))
 
         logger_mp.info("----------------------------------------------------------------")
         logger_mp.info("🟢  Press [r] to start syncing the robot with your movements.")
@@ -563,7 +563,15 @@ if __name__ == '__main__':
                         current_body_action = [-tele_data.left_ctrl_thumbstickValue[1]  * 0.3,
                                                -tele_data.left_ctrl_thumbstickValue[0]  * 0.3,
                                                -tele_data.right_ctrl_thumbstickValue[0] * 0.3]
-                elif (args.ee == "inspire_dfx" or args.ee == "inspire_ftp" or args.ee == "brainco") and args.input_mode == "hand":
+                elif (args.ee in ("inspire_dfx", "inspire_ftp", "inspire_ftp_sg", "brainco")) and args.input_mode == "hand":
+                    with dual_hand_data_lock:
+                        left_ee_state = dual_hand_state_array[:6]
+                        right_ee_state = dual_hand_state_array[-6:]
+                        left_hand_action = dual_hand_action_array[:6]
+                        right_hand_action = dual_hand_action_array[-6:]
+                        current_body_state = []
+                        current_body_action = []
+                elif args.ee == "inspire_ftp_sg" and args.input_mode == "controller":
                     with dual_hand_data_lock:
                         left_ee_state = dual_hand_state_array[:6]
                         right_ee_state = dual_hand_state_array[-6:]
@@ -589,11 +597,12 @@ if __name__ == '__main__':
                     current_body_state = []
                     current_body_action = []
 
-                # arm state and action
-                left_arm_state  = current_lr_arm_q[:7]
-                right_arm_state = current_lr_arm_q[-7:]
-                left_arm_action = sol_q[:7]
-                right_arm_action = sol_q[-7:]
+                # arm state and action (slice by URDF arm DOF, not a hardcoded 7)
+                n_arm = len(recorder.info["joint_names"]["left_arm"]) or 7
+                left_arm_state  = current_lr_arm_q[:n_arm]
+                right_arm_state = current_lr_arm_q[-n_arm:]
+                left_arm_action = sol_q[:n_arm]
+                right_arm_action = sol_q[-n_arm:]
                 if RECORD_RUNNING:
                     colors = {}
                     depths = {}

@@ -10,8 +10,131 @@ from threading import Thread
 import logging_mp
 logger_mp = logging_mp.getLogger(__name__)
 
+# URDF joint names, in the same order as recorded qpos for each --arm / --ee.
+ARM_JOINT_NAMES = {
+    "G1_29": {
+        "left_arm": [
+            "left_shoulder_pitch_joint", "left_shoulder_roll_joint", "left_shoulder_yaw_joint",
+            "left_elbow_joint", "left_wrist_roll_joint", "left_wrist_pitch_joint", "left_wrist_yaw_joint",
+        ],
+        "right_arm": [
+            "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint",
+            "right_elbow_joint", "right_wrist_roll_joint", "right_wrist_pitch_joint", "right_wrist_yaw_joint",
+        ],
+        "body": ["waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint"],
+    },
+    "G1_23": {
+        "left_arm": [
+            "left_shoulder_pitch_joint", "left_shoulder_roll_joint", "left_shoulder_yaw_joint",
+            "left_elbow_joint", "left_wrist_roll_joint",
+        ],
+        "right_arm": [
+            "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint",
+            "right_elbow_joint", "right_wrist_roll_joint",
+        ],
+        "body": ["waist_yaw_joint"],
+    },
+    "H1_2": {
+        "left_arm": [
+            "left_shoulder_pitch_joint", "left_shoulder_roll_joint", "left_shoulder_yaw_joint",
+            "left_elbow_pitch_joint", "left_elbow_roll_joint",
+            "left_wrist_pitch_joint", "left_wrist_yaw_joint",
+        ],
+        "right_arm": [
+            "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint",
+            "right_elbow_pitch_joint", "right_elbow_roll_joint",
+            "right_wrist_pitch_joint", "right_wrist_yaw_joint",
+        ],
+        "body": ["torso_joint"],
+    },
+    "H1": {
+        "left_arm": [
+            "left_shoulder_pitch_joint", "left_shoulder_roll_joint", "left_shoulder_yaw_joint",
+            "left_elbow_joint",
+        ],
+        "right_arm": [
+            "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint",
+            "right_elbow_joint",
+        ],
+        "body": ["torso_joint"],
+    },
+}
+
+EE_JOINT_NAMES = {
+    "dex3": {
+        "left_ee": [
+            "left_hand_thumb_0_joint", "left_hand_thumb_1_joint", "left_hand_thumb_2_joint",
+            "left_hand_middle_0_joint", "left_hand_middle_1_joint",
+            "left_hand_index_0_joint", "left_hand_index_1_joint",
+        ],
+        "right_ee": [
+            "right_hand_thumb_0_joint", "right_hand_thumb_1_joint", "right_hand_thumb_2_joint",
+            "right_hand_middle_0_joint", "right_hand_middle_1_joint",
+            "right_hand_index_0_joint", "right_hand_index_1_joint",
+        ],
+    },
+    "dex1": {
+        "left_ee": ["left_hand_joint"],
+        "right_ee": ["right_hand_joint"],
+    },
+    "inspire_ftp": {
+        "left_ee": [
+            "L_pinky_proximal_joint", "L_ring_proximal_joint", "L_middle_proximal_joint",
+            "L_index_proximal_joint", "L_thumb_proximal_pitch_joint", "L_thumb_proximal_yaw_joint",
+        ],
+        "right_ee": [
+            "R_pinky_proximal_joint", "R_ring_proximal_joint", "R_middle_proximal_joint",
+            "R_index_proximal_joint", "R_thumb_proximal_pitch_joint", "R_thumb_proximal_yaw_joint",
+        ],
+    },
+    "inspire_dfx": {
+        "left_ee": [
+            "L_pinky_proximal_joint", "L_ring_proximal_joint", "L_middle_proximal_joint",
+            "L_index_proximal_joint", "L_thumb_proximal_pitch_joint", "L_thumb_proximal_yaw_joint",
+        ],
+        "right_ee": [
+            "R_pinky_proximal_joint", "R_ring_proximal_joint", "R_middle_proximal_joint",
+            "R_index_proximal_joint", "R_thumb_proximal_pitch_joint", "R_thumb_proximal_yaw_joint",
+        ],
+    },
+    "inspire_ftp_sg": {
+        "left_ee": [
+            "L_pinky_proximal_joint", "L_ring_proximal_joint", "L_middle_proximal_joint",
+            "L_index_proximal_joint", "L_thumb_proximal_pitch_joint", "L_thumb_proximal_yaw_joint",
+        ],
+        "right_ee": [
+            "R_pinky_proximal_joint", "R_ring_proximal_joint", "R_middle_proximal_joint",
+            "R_index_proximal_joint", "R_thumb_proximal_pitch_joint", "R_thumb_proximal_yaw_joint",
+        ],
+    },
+    "brainco": {
+        "left_ee": [
+            "left_thumb_metacarpal_joint", "left_thumb_proximal_joint", "left_index_proximal_joint",
+            "left_middle_proximal_joint", "left_ring_proximal_joint", "left_pinky_proximal_joint",
+        ],
+        "right_ee": [
+            "right_thumb_metacarpal_joint", "right_thumb_proximal_joint", "right_index_proximal_joint",
+            "right_middle_proximal_joint", "right_ring_proximal_joint", "right_pinky_proximal_joint",
+        ],
+    },
+}
+
+
+def build_joint_names(arm: str, ee: str = None):
+    """Return joint_names dict matching URDF names and recorded qpos order."""
+    arm_names = ARM_JOINT_NAMES.get(arm, {})
+    ee_names = EE_JOINT_NAMES.get(ee, {}) if ee else {}
+    return {
+        "left_arm": arm_names.get("left_arm", []),
+        "left_ee": ee_names.get("left_ee", []),
+        "right_arm": arm_names.get("right_arm", []),
+        "right_ee": ee_names.get("right_ee", []),
+        "body": arm_names.get("body", []),
+    }
+
+
 class EpisodeWriter():
-    def __init__(self, task_dir, task_goal=None, task_desc = None, task_steps = None, frequency=30, image_size=[640, 360], rerun_log = False): #rerun_log=True
+    def __init__(self, task_dir, task_goal=None, task_desc = None, task_steps = None, frequency=30, image_size=[640, 480], rerun_log = False, joint_names=None): #rerun_log=True
         """
         image_size: [width, height]
         """
@@ -48,7 +171,7 @@ class EpisodeWriter():
         else:
             os.makedirs(self.task_dir)
             logger_mp.info(f"==> episode directory does not exist, now create one.\n")
-        self.data_info()
+        self.data_info(joint_names=joint_names)
 
         self.is_available = True  # Indicates whether the class is available for new operations
         # Initialize the queue and worker thread
@@ -63,7 +186,15 @@ class EpisodeWriter():
     def is_ready(self):
         return self.is_available
 
-    def data_info(self, version='1.0.0', date=None, author=None):
+    def data_info(self, version='1.0.0', date=None, author=None, joint_names=None):
+        if joint_names is None:
+            joint_names = {
+                "left_arm": [],
+                "left_ee": [],
+                "right_arm": [],
+                "right_ee": [],
+                "body": [],
+            }
         self.info = {
                 "version": "1.0.0" if version is None else version, 
                 "date": datetime.date.today().strftime('%Y-%m-%d') if date is None else date,
@@ -71,13 +202,7 @@ class EpisodeWriter():
                 "image": {"width":self.image_size[0], "height":self.image_size[1], "fps":self.frequency},
                 "depth": {"width":self.image_size[0], "height":self.image_size[1], "fps":self.frequency},
                 "audio": {"sample_rate": 16000, "channels": 1, "format":"PCM", "bits":16},    # PCM_S16
-                "joint_names":{
-                    "left_arm":   [],
-                    "left_ee":  [],
-                    "right_arm":  [],
-                    "right_ee": [],
-                    "body":       [],
-                },
+                "joint_names": joint_names,
 
                 "tactile_names": {
                     "left_ee": [],
