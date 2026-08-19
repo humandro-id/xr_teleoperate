@@ -109,11 +109,11 @@ EE_JOINT_NAMES = {
     },
     "brainco": {
         "left_ee": [
-            "left_thumb_metacarpal_joint", "left_thumb_proximal_joint", "left_index_proximal_joint",
+            "left_thumb_proximal_joint", "left_thumb_metacarpal_joint", "left_index_proximal_joint",
             "left_middle_proximal_joint", "left_ring_proximal_joint", "left_pinky_proximal_joint",
         ],
         "right_ee": [
-            "right_thumb_metacarpal_joint", "right_thumb_proximal_joint", "right_index_proximal_joint",
+            "right_thumb_proximal_joint", "right_thumb_metacarpal_joint", "right_index_proximal_joint",
             "right_middle_proximal_joint", "right_ring_proximal_joint", "right_pinky_proximal_joint",
         ],
     },
