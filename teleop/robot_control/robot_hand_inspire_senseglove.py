@@ -86,6 +86,9 @@ THUMB_YAW_INVERT = True
 # extrema the user can actually reach (glove never hits URDF limits).
 THUMB_ADAPT_INNER_FRAC = 0.12
 THUMB_ADAPT_MIN_SPAN = 0.05
+# Extra pad on the high/closed end of pitch only, so a comfortable curl
+# already saturates Inspire thumb_bend. Yaw is left at INNER_FRAC.
+THUMB_PITCH_CLOSE_FRAC = 0.28
 
 # Joints to ignore (haptic brakes of other fingers, palm sensors, strap).
 # thumb_brake is NOT ignored: it carries thumb abduction.
@@ -171,10 +174,12 @@ def apply_senseglove_mount_offset(wrist_pose, is_right = True):
 class AdaptiveRange:
     """Expanding min/max so the user's reachable travel maps to [0, 1]."""
 
-    def __init__(self, inner_frac=THUMB_ADAPT_INNER_FRAC, min_span=THUMB_ADAPT_MIN_SPAN):
+    def __init__(self, inner_frac=THUMB_ADAPT_INNER_FRAC, min_span=THUMB_ADAPT_MIN_SPAN,
+                 hi_frac=None):
         self.lo = None
         self.hi = None
         self.inner_frac = inner_frac
+        self.hi_frac = inner_frac if hi_frac is None else hi_frac
         self.min_span = min_span
 
     def update(self, x):
@@ -186,15 +191,14 @@ class AdaptiveRange:
         self.hi = max(self.hi, x)
 
     def normalize(self, x, invert=False):
-        """0 at observed lo, 1 at observed hi. Saturates inner_frac before extrema."""
+        """0 at observed lo, 1 at observed hi. Saturates before extrema."""
         if self.lo is None or self.hi is None:
             return 0.5
         span = self.hi - self.lo
         if span < self.min_span:
             return 0.5
-        pad = self.inner_frac * span
-        lo = self.lo + pad
-        hi = self.hi - pad
+        lo = self.lo + self.inner_frac * span
+        hi = self.hi - self.hi_frac * span
         if hi - lo < 1e-4:
             return 0.5
         n = float(np.clip((float(x) - lo) / (hi - lo), 0.0, 1.0))
@@ -237,7 +241,10 @@ class SenseGloveROS2Bridge:
         self._latest_left_msg = None
         self._latest_right_msg = None
         self._yaw_range = {'left': AdaptiveRange(), 'right': AdaptiveRange()}
-        self._pitch_range = {'left': AdaptiveRange(), 'right': AdaptiveRange()}
+        self._pitch_range = {
+            'left': AdaptiveRange(hi_frac=THUMB_PITCH_CLOSE_FRAC),
+            'right': AdaptiveRange(hi_frac=THUMB_PITCH_CLOSE_FRAC),
+        }
         self._last_thumb_log = 0.0
 
         # ── Finger tracking subscribers ──
