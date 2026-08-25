@@ -613,8 +613,8 @@ class Inspire_Controller_SenseGlove:
                         for i in range(Inspire_Num_Motors):
                             self.left_hand_force_array[i] = float(left_msg.force_act[i])
                     if not force_logged:
+                        pass
                         #logger_mp.info(f"[SenseGlove] force_act L: {list(left_msg.force_act)}")
-
             if left_touch_msg is not None:
                 with self.left_hand_touch_array.get_lock():
                     left_touch_data = self._process_touch_data(left_touch_msg)
