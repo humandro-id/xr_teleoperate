@@ -71,16 +71,20 @@ SENSEGLOVE_JOINT_RANGES = {
     'pinky_mcp':  (0.0, 1.0),
     'pinky_pip':  (0.0, 1.5),
     'pinky_dip':  (0.0, 1.5),  # dead on some units — safely ignored
-    # Thumb flexion (CMC/MCP/IP) → Inspire DOF 4 (thumb_bend / proximal_pitch)
-    'thumb_mcp':  (0.0, 0.61),
-    'thumb_pip':  (0.0, 0.6),
-    'thumb_dip':  (0.0, 1.4),
+    # Thumb flexion (CMC/MCP/IP) → Inspire DOF 4 (thumb_bend / proximal_pitch).
+    # Closed ends are below the glove mechanical max so Inspire saturates
+    # without needing a fully curled thumb on the Nova 2.
+    'thumb_mcp':  (0.0, 0.30),
+    'thumb_pip':  (0.0, 0.30),
+    'thumb_dip':  (0.0, 0.50),
 }
 
 # thumb_brake publishes CMC abduction (the joint name is the FFB actuator, not an empty sensor).
 # Maps to Inspire DOF 5 (thumb_rotation / proximal_yaw).
 # Tuple is (opposed/closed, splay/open) in rad. Swap the two values if yaw feels inverted.
-THUMB_ABDUCTION_RANGE = (1.05, -0.17)
+# Open is set well before the glove mechanical limit so Inspire saturates
+# without needing a fully abducted thumb on the Nova 2.
+THUMB_ABDUCTION_RANGE = (1.05, 0.30)
 
 # Joints to ignore (haptic brakes of other fingers, palm sensors, strap).
 # thumb_brake is NOT ignored: it carries thumb abduction.
@@ -358,7 +362,8 @@ class SenseGloveROS2Bridge:
                 result[i] = 1.0 - np.mean(finger_norm[fname])
 
         if thumb_flex_norm:
-            result[4] = 1.0 - np.mean(thumb_flex_norm)
+            # Max so a weakly tracked DIP/PIP does not dilute CMC flexion.
+            result[4] = 1.0 - np.max(thumb_flex_norm)
 
         if thumb_rotation_val is not None:
             closed_v, open_v = THUMB_ABDUCTION_RANGE
