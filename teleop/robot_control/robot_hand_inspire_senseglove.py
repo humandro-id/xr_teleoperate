@@ -71,17 +71,21 @@ SENSEGLOVE_JOINT_RANGES = {
     'pinky_mcp':  (0.0, 1.0),
     'pinky_pip':  (0.0, 1.5),
     'pinky_dip':  (0.0, 1.5),  # dead on some units — safely ignored
-    # Thumb flexion → Inspire DOF 4 (thumb_bend)
+    # Thumb flexion (CMC/MCP/IP) → Inspire DOF 4 (thumb_bend / proximal_pitch)
+    'thumb_mcp':  (0.0, 0.61),
     'thumb_pip':  (0.0, 0.6),
     'thumb_dip':  (0.0, 1.4),
 }
 
-# thumb_mcp uses negative values: more negative = more closed.
-# Maps to Inspire DOF 5 (thumb_rotation).
-THUMB_MCP_RANGE = (-0.7, 0.0)  # (most_closed, most_open)
+# thumb_brake publishes CMC abduction (the joint name is the FFB actuator, not an empty sensor).
+# Maps to Inspire DOF 5 (thumb_rotation / proximal_yaw).
+# Tuple is (opposed/closed, splay/open) in rad. Swap the two values if yaw feels inverted.
+THUMB_ABDUCTION_RANGE = (-0.17, 1.05)
 
-# Joints to ignore (haptic brakes, palm sensors, strap)
+# Joints to ignore (haptic brakes of other fingers, palm sensors, strap).
+# thumb_brake is NOT ignored: it carries thumb abduction.
 _IGNORED_SUFFIXES = ('brake', 'palm_pinky', 'palm_index', 'palm_strap')
+_THUMB_BRAKE_CANONICAL = 'thumb_brake'
 
 # ── Haptic feedback config ────────────────────────────────────────────
 # SenseGlove Nova 2 haptics_controller joint names (9 per hand).
@@ -308,9 +312,6 @@ class SenseGloveROS2Bridge:
 
         for name, pos in joint_dict.items():
             lo = name.lower()
-            # Skip haptic-brake, palm-sensor and strap joints
-            if any(lo.endswith(s) for s in _IGNORED_SUFFIXES):
-                continue
 
             # Strip l_/r_ prefix → canonical name (e.g. "index_mcp")
             parts = lo.split('_', 1)
@@ -319,13 +320,16 @@ class SenseGloveROS2Bridge:
             else:
                 canonical = lo
 
-            # ── thumb_mcp → Inspire DOF 5 (thumb_rotation) ──
-            # Negative values; more negative = more closed.
-            if canonical == 'thumb_mcp':
+            # ── thumb_brake (CMC abduction) → Inspire DOF 5 (thumb_rotation / yaw) ──
+            if canonical == _THUMB_BRAKE_CANONICAL:
                 thumb_rotation_val = pos
                 continue
 
-            # ── thumb_pip / thumb_dip → Inspire DOF 4 (thumb_bend) ──
+            # Skip other haptic-brake, palm-sensor and strap joints
+            if any(lo.endswith(s) for s in _IGNORED_SUFFIXES):
+                continue
+
+            # ── thumb_mcp / pip / dip (flexion) → Inspire DOF 4 (thumb_bend / pitch) ──
             if canonical.startswith('thumb_'):
                 jrange = SENSEGLOVE_JOINT_RANGES.get(canonical)
                 if jrange:
@@ -357,9 +361,9 @@ class SenseGloveROS2Bridge:
             result[4] = 1.0 - np.mean(thumb_flex_norm)
 
         if thumb_rotation_val is not None:
-            closed_v, open_v = THUMB_MCP_RANGE  # (-0.7, 0.0)
+            closed_v, open_v = THUMB_ABDUCTION_RANGE
             rng = open_v - closed_v
-            if rng > 0.01:
+            if abs(rng) > 0.01:
                 result[5] = np.clip(
                     (thumb_rotation_val - closed_v) / rng, 0.0, 1.0)
 
