@@ -71,20 +71,20 @@ SENSEGLOVE_JOINT_RANGES = {
     'pinky_mcp':  (0.0, 1.0),
     'pinky_pip':  (0.0, 1.5),
     'pinky_dip':  (0.0, 1.5),  # dead on some units — safely ignored
-    # Thumb flexion (CMC/MCP/IP) → Inspire DOF 4 (thumb_bend / proximal_pitch).
-    # Closed ends are below the glove mechanical max so Inspire saturates
-    # without needing a fully curled thumb on the Nova 2.
-    'thumb_mcp':  (0.0, 0.30),
-    'thumb_pip':  (0.0, 0.30),
-    'thumb_dip':  (0.0, 0.50),
+}
+
+# Thumb flexion → Inspire DOF 4 (thumb_bend / proximal_pitch).
+# Each tuple is (open, closed). closed may be < open (thumb_mcp goes negative).
+THUMB_FLEXION_RANGES = {
+    'thumb_mcp': (0.0, -0.40),  # more negative = more closed
+    'thumb_pip': (0.0, 0.45),
+    'thumb_dip': (0.0, 0.80),
 }
 
 # thumb_brake publishes CMC abduction (the joint name is the FFB actuator, not an empty sensor).
 # Maps to Inspire DOF 5 (thumb_rotation / proximal_yaw).
 # Tuple is (opposed/closed, splay/open) in rad. Swap the two values if yaw feels inverted.
-# Open is set well before the glove mechanical limit so Inspire saturates
-# without needing a fully abducted thumb on the Nova 2.
-THUMB_ABDUCTION_RANGE = (1.05, 0.30)
+THUMB_ABDUCTION_RANGE = (1.05, -0.17)
 
 # Joints to ignore (haptic brakes of other fingers, palm sensors, strap).
 # thumb_brake is NOT ignored: it carries thumb abduction.
@@ -299,6 +299,14 @@ class SenseGloveROS2Bridge:
     # ---- joint mapping ----------------------------------------------------
 
     @staticmethod
+    def _norm_open_closed(pos, open_v, closed_v):
+        """Map pos to [0, 1] where 0 = open_v and 1 = closed_v (order may be inverted)."""
+        rng = closed_v - open_v
+        if abs(rng) < 0.01:
+            return 0.0
+        return float(np.clip((pos - open_v) / rng, 0.0, 1.0))
+
+    @staticmethod
     def _map_to_inspire(msg):
         """Map a SenseGlove JointState message to Inspire 6-DOF values.
 
@@ -335,13 +343,10 @@ class SenseGloveROS2Bridge:
 
             # ── thumb_mcp / pip / dip (flexion) → Inspire DOF 4 (thumb_bend / pitch) ──
             if canonical.startswith('thumb_'):
-                jrange = SENSEGLOVE_JOINT_RANGES.get(canonical)
+                jrange = THUMB_FLEXION_RANGES.get(canonical)
                 if jrange:
-                    open_v, closed_v = jrange
-                    rng = closed_v - open_v
-                    if rng > 0.01:
-                        thumb_flex_norm.append(
-                            np.clip((pos - open_v) / rng, 0.0, 1.0))
+                    thumb_flex_norm.append(
+                        SenseGloveROS2Bridge._norm_open_closed(pos, *jrange))
                 continue
 
             # ── four fingers → Inspire DOF 0-3 ──
