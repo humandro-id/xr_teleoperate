@@ -613,14 +613,14 @@ class Inspire_Controller_SenseGlove:
                         for i in range(Inspire_Num_Motors):
                             self.left_hand_force_array[i] = float(left_msg.force_act[i])
                     if not force_logged:
-                        logger_mp.info(f"[SenseGlove] force_act L: {list(left_msg.force_act)}")
+                        #logger_mp.info(f"[SenseGlove] force_act L: {list(left_msg.force_act)}")
 
             if left_touch_msg is not None:
                 with self.left_hand_touch_array.get_lock():
                     left_touch_data = self._process_touch_data(left_touch_msg)
                     for i in range(NUM_TOUCH_DATA):
                         self.left_hand_touch_array[i] = left_touch_data[i]           
-                    logger_mp.info(f"[SenseGlove] touch L: {list(left_touch_data)}")
+                    #logger_mp.info(f"[SenseGlove] touch L: {list(left_touch_data)}")
 
             right_msg = self.RightHandState_sub.Read()
             right_touch_msg = self.RightHandTouch_sub.Read()
@@ -634,14 +634,14 @@ class Inspire_Controller_SenseGlove:
                         for i in range(Inspire_Num_Motors):
                             self.right_hand_force_array[i] = float(right_msg.force_act[i])
                     if not force_logged:
-                        logger_mp.info(f"[SenseGlove] force_act R: {list(right_msg.force_act)}")
+                        #logger_mp.info(f"[SenseGlove] force_act R: {list(right_msg.force_act)}")
                         force_logged = True
             if right_touch_msg is not None:
                 with self.right_hand_touch_array.get_lock():
                     right_touch_data = self._process_touch_data(right_touch_msg)
                     for i in range(NUM_TOUCH_DATA):
                         self.right_hand_touch_array[i] = right_touch_data[i]
-                    logger_mp.info(f"[SenseGlove] touch R: {list(right_touch_data)}")
+                    #logger_mp.info(f"[SenseGlove] touch R: {list(right_touch_data)}")
             time.sleep(0.002)
 
     def _process_touch_data(self, touch_data):
