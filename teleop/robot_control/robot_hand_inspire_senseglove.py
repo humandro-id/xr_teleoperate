@@ -79,8 +79,12 @@ SENSEGLOVE_JOINT_RANGES = {
 THUMB_FLEXION_JOINTS = ('thumb_mcp', 'thumb_pip', 'thumb_dip')
 
 # thumb_brake publishes CMC abduction → Inspire DOF 5 (thumb_rotation / yaw).
-# True: higher raw angle = more opposed/closed. Flip if yaw feels inverted.
-THUMB_YAW_INVERT = True
+# Per-hand invert: Nova 2 left/right abduction come out with opposite signs.
+# True: higher raw angle = more opposed/closed.
+THUMB_YAW_INVERT = {
+    'left': True,
+    'right': False,
+}
 
 # Learn min/max from live motion. inner_frac saturates Inspire before the
 # extrema the user can actually reach (glove never hits URDF limits).
@@ -411,7 +415,7 @@ class SenseGloveROS2Bridge:
         if thumb_rotation_val is not None:
             self._yaw_range[side].update(thumb_rotation_val)
             result[5] = self._yaw_range[side].normalize(
-                thumb_rotation_val, invert=THUMB_YAW_INVERT)
+                thumb_rotation_val, invert=THUMB_YAW_INVERT[side])
 
         now = time.time()
         if now - self._last_thumb_log > 2.0:
