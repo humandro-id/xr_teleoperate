@@ -80,7 +80,7 @@ SENSEGLOVE_JOINT_RANGES = {
 # thumb_brake publishes CMC abduction (the joint name is the FFB actuator, not an empty sensor).
 # Maps to Inspire DOF 5 (thumb_rotation / proximal_yaw).
 # Tuple is (opposed/closed, splay/open) in rad. Swap the two values if yaw feels inverted.
-THUMB_ABDUCTION_RANGE = (-0.17, 1.05)
+THUMB_ABDUCTION_RANGE = (1.05, -0.17)
 
 # Joints to ignore (haptic brakes of other fingers, palm sensors, strap).
 # thumb_brake is NOT ignored: it carries thumb abduction.
