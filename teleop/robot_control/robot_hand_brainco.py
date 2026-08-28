@@ -13,6 +13,7 @@ import logging_mp
 logger_mp = logging_mp.getLogger(__name__)
 
 brainco_Num_Motors = 6
+# q = close position [0, 1], tau = grip force [0, 1] for index..pinky (thumb stays 0).
 kTopicbraincoLeftCommand = "rt/brainco/left/cmd"
 kTopicbraincoLeftState = "rt/brainco/left/state"
 kTopicbraincoRightCommand = "rt/brainco/right/cmd"
@@ -49,6 +50,14 @@ def _wait_brainco_dds(is_ready, label, timeout=5.0):
         logger_mp.warning(f"[{label}] Waiting to subscribe dds...")
     logger_mp.info(f"[{label}] Subscribe dds ok.")
     return True
+
+def _fill_hand_cmds(msg, joint_index_enum, q_target):
+    for idx, joint_id in enumerate(joint_index_enum):
+        msg.cmds[joint_id].q = float(q_target[idx])
+        msg.cmds[joint_id].dq = 1.0
+        # Thumb: position only. Other fingers: more close → more allowed current.
+        msg.cmds[joint_id].tau = float(np.clip(q_target[idx], 0.0, 1.0)) if idx >= 2 else 0.0
+
 
 class Brainco_Controller_ctrl:
     def __init__(self, left_gripper_trigger_in, left_gripper_squeeze_in, right_gripper_trigger_in, right_gripper_squeeze_in, 
@@ -112,12 +121,8 @@ class Brainco_Controller_ctrl:
         """
         Set current left, right hand motor state target q
         """
-        for idx, id in enumerate(Brainco_Left_Hand_JointIndex):
-            self.left_hand_msg.cmds[id].q = float(left_q_target[idx])
-            self.left_hand_msg.cmds[id].dq = 1.0
-        for idx, id in enumerate(Brainco_Right_Hand_JointIndex):
-            self.right_hand_msg.cmds[id].q = float(right_q_target[idx])
-            self.right_hand_msg.cmds[id].dq = 1.0
+        _fill_hand_cmds(self.left_hand_msg, Brainco_Left_Hand_JointIndex, left_q_target)
+        _fill_hand_cmds(self.right_hand_msg, Brainco_Right_Hand_JointIndex, right_q_target)
 
         self.LeftHandCmb_publisher.Write(self.left_hand_msg)
         self.RightHandCmb_publisher.Write(self.right_hand_msg)
@@ -260,12 +265,8 @@ class Brainco_Controller_hand:
         """
         Set current left, right hand motor state target q
         """
-        for idx, id in enumerate(Brainco_Left_Hand_JointIndex):
-            self.left_hand_msg.cmds[id].q = float(left_q_target[idx])
-            self.left_hand_msg.cmds[id].dq = 1.0
-        for idx, id in enumerate(Brainco_Right_Hand_JointIndex):
-            self.right_hand_msg.cmds[id].q = float(right_q_target[idx])
-            self.right_hand_msg.cmds[id].dq = 1.0
+        _fill_hand_cmds(self.left_hand_msg, Brainco_Left_Hand_JointIndex, left_q_target)
+        _fill_hand_cmds(self.right_hand_msg, Brainco_Right_Hand_JointIndex, right_q_target)
 
         self.LeftHandCmb_publisher.Write(self.left_hand_msg)
         self.RightHandCmb_publisher.Write(self.right_hand_msg)
