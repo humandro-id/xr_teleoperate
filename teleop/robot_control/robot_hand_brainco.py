@@ -329,9 +329,15 @@ class Brainco_Controller_hand:
 
                     # idx: thumb flex, thumb aux, index, middle, ring, pinky
                     close_rad = (0.80, 1.35, 1.00, 1.00, 1.00, 1.00)
+                    # A fully open human thumb does not retarget to 0 rad: it sits
+                    # around 0.2-0.34. Without this offset the thumb is never
+                    # commanded below ~0.40 no matter how wide the hand opens.
+                    # Measured over 7999 frames of recorded teleop. Other fingers
+                    # do reach 0, so they keep an offset of 0.
+                    open_rad = (0.20, 0.00, 0.00, 0.00, 0.00, 0.00)
                     for idx in range(brainco_Num_Motors):
-                        left_q_target[idx]  = normalize(left_q_target[idx], 0.0, close_rad[idx])
-                        right_q_target[idx] = normalize(right_q_target[idx], 0.0, close_rad[idx])
+                        left_q_target[idx]  = normalize(left_q_target[idx], open_rad[idx], close_rad[idx])
+                        right_q_target[idx] = normalize(right_q_target[idx], open_rad[idx], close_rad[idx])
 
                 # get dual hand action
                 action_data = np.concatenate((left_q_target, right_q_target))    
