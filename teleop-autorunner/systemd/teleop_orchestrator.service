@@ -1,0 +1,16 @@
+[Unit]
+Description=G1 Teleoperation NATS orchestrator
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+EnvironmentFile=/etc/robot/robot.env
+WorkingDirectory=/opt/teleop_autorunner
+ExecStart=/usr/bin/python3 /opt/teleop_autorunner/orchestrator.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
