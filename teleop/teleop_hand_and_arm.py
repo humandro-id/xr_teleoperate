@@ -224,11 +224,11 @@ if __name__ == '__main__':
 
     load_dotenv()
 
-    nats_servers = os.getenv("NATS_SERVER", "nats://192.168.30.88:4222")
+    nats_servers = os.getenv("IP_NATS", "nats://192.168.30.88:4222")
     robot_id = os.getenv("ROBOT_ID", 1)
-    subject = f'g1.{robot_id}.command'
-    stream_name = 'G1_VIDEO'
-    subject_name = f'g1.{robot_id}.camera'
+    subject = f'unitree_g1.{robot_id}.command'
+    stream_name = 'UNITREE_G1_VIDEO'
+    subject_name = f'unitree_g1.{robot_id}.camera'
 
     if NATS_AVAILABLE:
         _start_nats_listener(nats_servers, subject, stream_name, subject_name)
