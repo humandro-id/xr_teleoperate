@@ -34,6 +34,8 @@ kTopicInspireFTPLeftCommand  = "rt/inspire_hand/ctrl/l"
 kTopicInspireFTPRightCommand = "rt/inspire_hand/ctrl/r"
 kTopicInspireFTPLeftState    = "rt/inspire_hand/state/l"
 kTopicInspireFTPRightState   = "rt/inspire_hand/state/r"
+kTopicInspireFTPRightTouch   = "rt/inspire_hand/touch/r"
+kTopicInspireFTPLeftTouch   = "rt/inspire_hand/touch/l"
 
 # ── unitree_sim_isaaclab (simulation) topics ─────────────────────────
 # The simulator's InspireDDS subscribes to a single MotorCmds_ message
@@ -47,8 +49,8 @@ SIM_RIGHT_HAND_OFFSET = 0   # cmds[0..5]  → right hand
 SIM_LEFT_HAND_OFFSET  = 6   # cmds[6..11] → left hand
 SIM_NUM_MOTORS_TOTAL  = 12
 
-DEFAULT_LEFT_GLOVE_TOPIC  = "/senseglove/glove00801/lh/joint_states"
-DEFAULT_RIGHT_GLOVE_TOPIC = "/senseglove/glove00804/rh/joint_states"
+DEFAULT_LEFT_GLOVE_TOPIC  = "/senseglove/glove00799/lh/joint_states"
+DEFAULT_RIGHT_GLOVE_TOPIC = "/senseglove/glove00768/rh/joint_states"
 
 # Typical max flexion (rad) per finger for the SenseGlove Nova 2.
 # Tune these if the mapping feels too sensitive or too sluggish.
@@ -69,17 +71,33 @@ SENSEGLOVE_JOINT_RANGES = {
     'pinky_mcp':  (0.0, 1.0),
     'pinky_pip':  (0.0, 1.5),
     'pinky_dip':  (0.0, 1.5),  # dead on some units — safely ignored
-    # Thumb flexion → Inspire DOF 4 (thumb_bend)
-    'thumb_pip':  (0.0, 0.6),
-    'thumb_dip':  (0.0, 1.4),
 }
 
-# thumb_mcp uses negative values: more negative = more closed.
-# Maps to Inspire DOF 5 (thumb_rotation).
-THUMB_MCP_RANGE = (-0.7, 0.0)  # (most_closed, most_open)
+# Thumb flexion joints → Inspire DOF 4 (thumb_bend / proximal_pitch).
+# Nova 2 CMC flexion can come out positive or negative; we use abs() and
+# adapt to the travel the user can actually reach.
+THUMB_FLEXION_JOINTS = ('thumb_mcp', 'thumb_pip', 'thumb_dip')
 
-# Joints to ignore (haptic brakes, palm sensors, strap)
+# thumb_brake publishes CMC abduction → Inspire DOF 5 (thumb_rotation / yaw).
+# Per-hand invert: Nova 2 left/right abduction come out with opposite signs.
+# True: higher raw angle = more opposed/closed.
+THUMB_YAW_INVERT = {
+    'left': True,
+    'right': False,
+}
+
+# Learn min/max from live motion. inner_frac saturates Inspire before the
+# extrema the user can actually reach (glove never hits URDF limits).
+THUMB_ADAPT_INNER_FRAC = 0.12
+THUMB_ADAPT_MIN_SPAN = 0.05
+# Extra pad on the high/closed end of pitch only, so a comfortable curl
+# already saturates Inspire thumb_bend. Yaw is left at INNER_FRAC.
+THUMB_PITCH_CLOSE_FRAC = 0.28
+
+# Joints to ignore (haptic brakes of other fingers, palm sensors, strap).
+# thumb_brake is NOT ignored: it carries thumb abduction.
 _IGNORED_SUFFIXES = ('brake', 'palm_pinky', 'palm_index', 'palm_strap')
+_THUMB_BRAKE_CANONICAL = 'thumb_brake'
 
 # ── Haptic feedback config ────────────────────────────────────────────
 # SenseGlove Nova 2 haptics_controller joint names (9 per hand).
@@ -98,8 +116,8 @@ NUM_HAPTICS_JOINTS = 9
 
 #LEFT_HAPTICS_TOPIC  = '/senseglove/glove00801/lh/haptics_controller/joint_trajectory'
 #RIGHT_HAPTICS_TOPIC = '/senseglove/glove00804/rh/haptics_controller/joint_trajectory'
-LEFT_HAPTICS_TOPIC  = '/senseglove/glove00801/lh/haptics_commands'
-RIGHT_HAPTICS_TOPIC = '/senseglove/glove00804/rh/haptics_commands'
+LEFT_HAPTICS_TOPIC  = '/senseglove/glove00799/lh/haptics_commands'
+RIGHT_HAPTICS_TOPIC = '/senseglove/glove00768/rh/haptics_commands'
 
 # Inspire DOF → SenseGlove brake index mapping
 # Inspire: [0:pinky, 1:ring, 2:middle, 3:index, 4:thumb_bend, 5:thumb_rot]
@@ -114,6 +132,11 @@ INSPIRE_TO_BRAKE = {
 # Inspire force_act: 0–4096.  Dead zone below 200, full brake at 4096.
 HAPTIC_FORCE_DEADZONE = 200
 HAPTIC_FORCE_MAX = 3300# Inspire force_act: 0–4096.  Dead zone below 200, full brake at 4096.
+
+#Number of touch values to send to gloves {pinky_palm, index_palm, thumb_top, index_top}
+NUM_TOUCH_DATA = 4
+HAPTIC_TOUCH_DEADZONE = 50
+HAPTIC_TOUCH_MAX = 3300
 
 # REotation functions for headset controllers
 SG_MOUNT_OFFSET_EULER_DEG_RIGHT = (-180.0, 180.0, 0.0)   # (rx, ry, rz) 
@@ -152,6 +175,45 @@ def apply_senseglove_mount_offset(wrist_pose, is_right = True):
         return wrist_pose @ SG_MOUNT_OFFSET_LEFT
 
 
+class AdaptiveRange:
+    """Expanding min/max so the user's reachable travel maps to [0, 1]."""
+
+    def __init__(self, inner_frac=THUMB_ADAPT_INNER_FRAC, min_span=THUMB_ADAPT_MIN_SPAN,
+                 hi_frac=None):
+        self.lo = None
+        self.hi = None
+        self.inner_frac = inner_frac
+        self.hi_frac = inner_frac if hi_frac is None else hi_frac
+        self.min_span = min_span
+
+    def update(self, x):
+        x = float(x)
+        if self.lo is None:
+            self.lo = self.hi = x
+            return
+        self.lo = min(self.lo, x)
+        self.hi = max(self.hi, x)
+
+    def normalize(self, x, invert=False):
+        """0 at observed lo, 1 at observed hi. Saturates before extrema."""
+        if self.lo is None or self.hi is None:
+            return 0.5
+        span = self.hi - self.lo
+        if span < self.min_span:
+            return 0.5
+        lo = self.lo + self.inner_frac * span
+        hi = self.hi - self.hi_frac * span
+        if hi - lo < 1e-4:
+            return 0.5
+        n = float(np.clip((float(x) - lo) / (hi - lo), 0.0, 1.0))
+        return 1.0 - n if invert else n
+
+    def span_str(self):
+        if self.lo is None:
+            return "unseen"
+        return f"{self.lo:.3f}:{self.hi:.3f}"
+
+
 # ---------------------------------------------------------------------------
 #  ROS2 bridge – runs in the main process, writes to shared Arrays
 # ---------------------------------------------------------------------------
@@ -182,6 +244,12 @@ class SenseGloveROS2Bridge:
         self._names_logged_r = False
         self._latest_left_msg = None
         self._latest_right_msg = None
+        self._yaw_range = {'left': AdaptiveRange(), 'right': AdaptiveRange()}
+        self._pitch_range = {
+            'left': AdaptiveRange(hi_frac=THUMB_PITCH_CLOSE_FRAC),
+            'right': AdaptiveRange(hi_frac=THUMB_PITCH_CLOSE_FRAC),
+        }
+        self._last_thumb_log = 0.0
 
         # ── Finger tracking subscribers ──
         # SensorDataQoS: BEST_EFFORT, KEEP_LAST, depth=5, VOLATILE
@@ -234,13 +302,13 @@ class SenseGloveROS2Bridge:
         # Map latest SenseGlove data to Inspire shared arrays
         left_msg = self._latest_left_msg
         if left_msg is not None:
-            mapped = self._map_to_inspire(left_msg)
+            mapped = self._map_to_inspire(left_msg, 'left')
             with self._left_arr.get_lock():
                 self._left_arr[:] = mapped
 
         right_msg = self._latest_right_msg
         if right_msg is not None:
-            mapped = self._map_to_inspire(right_msg)
+            mapped = self._map_to_inspire(right_msg, 'right')
             with self._right_arr.get_lock():
                 self._right_arr[:] = mapped
 
@@ -283,53 +351,46 @@ class SenseGloveROS2Bridge:
 
     # ---- joint mapping ----------------------------------------------------
 
-    @staticmethod
-    def _map_to_inspire(msg):
+    def _map_to_inspire(self, msg, side):
         """Map a SenseGlove JointState message to Inspire 6-DOF values.
 
         Returns list of 6 floats in Inspire motor order:
             [pinky, ring, middle, index, thumb_bend, thumb_rotation]
         Values are normalised to [0, 1] where 1 = fully open.
+
+        Thumb yaw/pitch ranges are learned from the motion the glove actually
+        reports (the Nova 2 never reaches the URDF joint limits).
         """
         joint_dict = dict(zip(msg.name, msg.position))
         result = np.ones(Inspire_Num_Motors, dtype=np.float64)
 
-        # Collect flexion angles per finger
         finger_norm = {f: [] for f in ('pinky', 'ring', 'middle', 'index')}
-        thumb_flex_norm = []
+        thumb_flex_abs = []
+        thumb_raw = {}
         thumb_rotation_val = None
 
         for name, pos in joint_dict.items():
             lo = name.lower()
-            # Skip haptic-brake, palm-sensor and strap joints
-            if any(lo.endswith(s) for s in _IGNORED_SUFFIXES):
-                continue
 
-            # Strip l_/r_ prefix → canonical name (e.g. "index_mcp")
             parts = lo.split('_', 1)
             if len(parts) == 2 and parts[0] in ('l', 'r'):
                 canonical = parts[1]
             else:
                 canonical = lo
 
-            # ── thumb_mcp → Inspire DOF 5 (thumb_rotation) ──
-            # Negative values; more negative = more closed.
-            if canonical == 'thumb_mcp':
+            if canonical == _THUMB_BRAKE_CANONICAL:
                 thumb_rotation_val = pos
+                thumb_raw['brake'] = pos
                 continue
 
-            # ── thumb_pip / thumb_dip → Inspire DOF 4 (thumb_bend) ──
-            if canonical.startswith('thumb_'):
-                jrange = SENSEGLOVE_JOINT_RANGES.get(canonical)
-                if jrange:
-                    open_v, closed_v = jrange
-                    rng = closed_v - open_v
-                    if rng > 0.01:
-                        thumb_flex_norm.append(
-                            np.clip((pos - open_v) / rng, 0.0, 1.0))
+            if any(lo.endswith(s) for s in _IGNORED_SUFFIXES):
                 continue
 
-            # ── four fingers → Inspire DOF 0-3 ──
+            if canonical in THUMB_FLEXION_JOINTS:
+                thumb_flex_abs.append(abs(pos))
+                thumb_raw[canonical] = pos
+                continue
+
             for fname in finger_norm:
                 if canonical.startswith(fname + '_'):
                     jrange = SENSEGLOVE_JOINT_RANGES.get(canonical)
@@ -341,20 +402,33 @@ class SenseGloveROS2Bridge:
                                 np.clip((pos - open_v) / rng, 0.0, 1.0))
                     break
 
-                # Normalized flex values are 0=open, 1=closed → invert to Inspire convention
         for i, fname in enumerate(('pinky', 'ring', 'middle', 'index')):
             if finger_norm[fname]:
                 result[i] = 1.0 - np.mean(finger_norm[fname])
 
-        if thumb_flex_norm:
-            result[4] = 1.0 - np.mean(thumb_flex_norm)
+        if thumb_flex_abs:
+            curl = max(thumb_flex_abs)
+            self._pitch_range[side].update(curl)
+            # High curl → Inspire closed (0)
+            result[4] = self._pitch_range[side].normalize(curl, invert=True)
 
         if thumb_rotation_val is not None:
-            closed_v, open_v = THUMB_MCP_RANGE  # (-0.7, 0.0)
-            rng = open_v - closed_v
-            if rng > 0.01:
-                result[5] = np.clip(
-                    (thumb_rotation_val - closed_v) / rng, 0.0, 1.0)
+            self._yaw_range[side].update(thumb_rotation_val)
+            result[5] = self._yaw_range[side].normalize(
+                thumb_rotation_val, invert=THUMB_YAW_INVERT[side])
+
+        now = time.time()
+        if now - self._last_thumb_log > 2.0:
+            self._last_thumb_log = now
+            logger_mp.info(
+                f"[SG {side}] raw brake={thumb_raw.get('brake', float('nan')):.3f} "
+                f"mcp={thumb_raw.get('thumb_mcp', float('nan')):.3f} "
+                f"pip={thumb_raw.get('thumb_pip', float('nan')):.3f} "
+                f"dip={thumb_raw.get('thumb_dip', float('nan')):.3f} | "
+                f"pitch={result[4]:.2f} yaw={result[5]:.2f} "
+                f"pitch_span={self._pitch_range[side].span_str()} "
+                f"yaw_span={self._yaw_range[side].span_str()}"
+            )
 
         return result.tolist()
 
@@ -438,6 +512,15 @@ class Inspire_Controller_SenseGlove:
                 kTopicInspireFTPRightState, inspire_dds.inspire_hand_state)
             self.RightHandState_sub.Init()
 
+            # ---- Real hand: FTP per-hand touch subscribers -----------------
+            self.LeftHandTouch_sub = ChannelSubscriber(
+                kTopicInspireFTPLeftTouch, inspire_dds.inspire_hand_touch)
+            self.LeftHandTouch_sub.Init()
+            self.RightHandTouch_sub = ChannelSubscriber(
+                kTopicInspireFTPRightTouch, inspire_dds.inspire_hand_touch)
+            self.RightHandTouch_sub.Init()
+
+
         # ---- Shared arrays ------------------------------------------------
         self.left_hand_state_array  = Array('d', Inspire_Num_Motors, lock=True)
         self.right_hand_state_array = Array('d', Inspire_Num_Motors, lock=True)
@@ -446,6 +529,9 @@ class Inspire_Controller_SenseGlove:
 
         self.sg_left_mapped  = Array('d', Inspire_Num_Motors, lock=True)
         self.sg_right_mapped = Array('d', Inspire_Num_Motors, lock=True)
+
+        self.left_hand_touch_array = Array('d', NUM_TOUCH_DATA, lock=True)
+        self.right_hand_touch_array = Array('d', NUM_TOUCH_DATA, lock=True)
         for arr in (self.sg_left_mapped, self.sg_right_mapped):
             with arr.get_lock():
                 for i in range(Inspire_Num_Motors):
@@ -527,6 +613,7 @@ class Inspire_Controller_SenseGlove:
         force_logged = False
         while True:
             left_msg = self.LeftHandState_sub.Read()
+            left_touch_msg = self.LeftHandTouch_sub.Read()
             if left_msg is not None:
                 if hasattr(left_msg, 'angle_act') and len(left_msg.angle_act) == Inspire_Num_Motors:
                     with self.left_hand_state_array.get_lock():
@@ -537,9 +624,17 @@ class Inspire_Controller_SenseGlove:
                         for i in range(Inspire_Num_Motors):
                             self.left_hand_force_array[i] = float(left_msg.force_act[i])
                     if not force_logged:
-                        logger_mp.info(f"[SenseGlove] force_act L: {list(left_msg.force_act)}")
+                        pass
+                        #logger_mp.info(f"[SenseGlove] force_act L: {list(left_msg.force_act)}")
+            if left_touch_msg is not None:
+                with self.left_hand_touch_array.get_lock():
+                    left_touch_data = self._process_touch_data(left_touch_msg)
+                    for i in range(NUM_TOUCH_DATA):
+                        self.left_hand_touch_array[i] = left_touch_data[i]           
+                    #logger_mp.info(f"[SenseGlove] touch L: {list(left_touch_data)}")
 
             right_msg = self.RightHandState_sub.Read()
+            right_touch_msg = self.RightHandTouch_sub.Read()
             if right_msg is not None:
                 if hasattr(right_msg, 'angle_act') and len(right_msg.angle_act) == Inspire_Num_Motors:
                     with self.right_hand_state_array.get_lock():
@@ -550,10 +645,44 @@ class Inspire_Controller_SenseGlove:
                         for i in range(Inspire_Num_Motors):
                             self.right_hand_force_array[i] = float(right_msg.force_act[i])
                     if not force_logged:
-                        logger_mp.info(f"[SenseGlove] force_act R: {list(right_msg.force_act)}")
+                        #logger_mp.info(f"[SenseGlove] force_act R: {list(right_msg.force_act)}")
                         force_logged = True
-
+            if right_touch_msg is not None:
+                with self.right_hand_touch_array.get_lock():
+                    right_touch_data = self._process_touch_data(right_touch_msg)
+                    for i in range(NUM_TOUCH_DATA):
+                        self.right_hand_touch_array[i] = right_touch_data[i]
+                    #logger_mp.info(f"[SenseGlove] touch R: {list(right_touch_data)}")
             time.sleep(0.002)
+
+    def _process_touch_data(self, touch_data):
+        """Map touch sensor array data to mean values in a compact array for 
+           the SenseGlove
+        """
+        touch_array = np.zeros(NUM_TOUCH_DATA)
+        if hasattr(touch_data, 'palm_touch'):
+            palm_touch_array = np.array(touch_data.palm_touch).reshape(8, 14)
+            palm_touch_pinky_mean = np.mean(np.sort(np.reshape(palm_touch_array[:, :7], -1))[-5:])
+            palm_touch_index_mean = np.mean(np.sort(np.reshape(palm_touch_array[:, 7:], -1))[-5:])
+
+            touch_array[0] = palm_touch_pinky_mean 
+            touch_array[1] = palm_touch_index_mean 
+        if hasattr(touch_data, 'fingerfive_top_touch'):
+            thumb_touch_mean = np.mean(np.sort(touch_data.fingerfive_top_touch)[-5:])
+            touch_array[2] = thumb_touch_mean
+        if hasattr(touch_data, 'fingerfour_top_touch'):
+            index_touch_mean = np.mean(np.sort(touch_data.fingerfour_top_touch)[-5:])
+            touch_array[3] = index_touch_mean
+
+        usable_range = HAPTIC_TOUCH_MAX - HAPTIC_TOUCH_DEADZONE
+
+        touch_array = np.clip(
+                    (touch_array - HAPTIC_TOUCH_DEADZONE) / usable_range * 100.0, 0.0, 100.0)
+
+        return touch_array
+
+            
+
 
     # ---- DDS command publishing -------------------------------------------
 
