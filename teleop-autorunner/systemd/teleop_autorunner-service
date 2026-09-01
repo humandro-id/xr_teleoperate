@@ -1,0 +1,14 @@
+[Unit]
+Description=G1 Teleoperation (teleimager + teleop_hand_and_arm)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+EnvironmentFile=/etc/robot/robot.env
+ExecStart=/opt/teleop_autorunner/scripts/launch_teleop.sh
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
