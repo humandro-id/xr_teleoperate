@@ -18,7 +18,6 @@ from teleop.robot_control.robot_arm import G1_29_ArmController, G1_23_ArmControl
 from teleop.robot_control.robot_arm_ik import G1_29_ArmIK, G1_23_ArmIK, H1_2_ArmIK, H1_ArmIK
 from teleop.robot_control.robot_hand_unitree import Dex3_1_Controller, Dex1_1_Gripper_Controller
 from teleop.robot_control.robot_hand_inspire import Inspire_Controller_DFX, Inspire_Controller_FTP
-from teleop.robot_control.robot_hand_inspire_senseglove import Inspire_Controller_SenseGlove, apply_senseglove_mount_offset
 from teleop.robot_control.robot_hand_brainco import Brainco_Controller_ctrl, Brainco_Controller_hand
 from teleimager.image_client import ImageClient
 from teleop.utils.episode_writer import EpisodeWriter, build_joint_names
@@ -27,6 +26,8 @@ from teleop.utils.motion_switcher import MotionSwitcher, LocoClientWrapper
 from sshkeyboard import listen_keyboard, stop_listening
 from dotenv import load_dotenv
 import asyncio
+import cv2
+import json
 
 try:
     import nats
@@ -53,9 +54,13 @@ START          = False  # Enable to start robot following VR user motion
 STOP           = False  # Enable to begin system exit procedure
 READY          = False  # Ready to (1) enter START state, (2) enter RECORD_RUNNING state
 RECORD_RUNNING = False  # True if [Recording]
-RECORD_TOGGLE  = False  # Toggle recording state
+RECORD_TOGGLE  = False  # Keyboard toggle only
+RECORD_REQUEST = None   # NATS explicit: "start" | "stop"
 js = None
 nats_client = None
+nats_loop = None
+_last_camera_pub = 0.0
+CAMERA_PUB_HZ = 10.0
 
 
 def on_press(key):
@@ -105,6 +110,7 @@ async def setup_jetstream(stream_name, video_subject):
 def _start_nats_listener(nats_server, subject, stream_name, subject_name):
     """Inicia el listener de NATS en un hilo separado."""
     def run_nats():
+        global nats_loop
         nats_loop = asyncio.new_event_loop()
         asyncio.set_event_loop(nats_loop)
         nats_loop.run_until_complete(nats_handler(nats_server, subject, stream_name, subject_name))
@@ -140,8 +146,15 @@ async def nats_handler(nats_server, subject, stream_name, subject_name):
         await setup_jetstream(stream_name, subject_name)
         
         async def message_handler(msg):
-            command = msg.data.decode().strip().lower()
-            logger_mp.info(f'📩 NATS comando recibido: {command}')
+            raw = msg.data.decode().strip()
+            logger_mp.info(f'📩 NATS comando recibido: {raw}')
+            command = raw.lower()
+            try:
+                payload = json.loads(raw)
+                if isinstance(payload, dict) and payload.get("command") is not None:
+                    command = str(payload["command"]).strip().lower()
+            except json.JSONDecodeError:
+                pass
             handle_nats_command(command)
         
         await nats_client.subscribe(subject, cb=message_handler)
@@ -167,31 +180,62 @@ async def publish_nats_connection_status(status: int, nats_server):
             logger_mp.warn(f'⚠️ No se pudo publicar estado NATS ({status}): {e}')
 
 async def _async_publish_video(jpg_bytes, subject):
-    """Corutina para publicar bytes a JetStream."""
-    if js:
-        try:
+    """Publica JPEG en JetStream; si el stream no existe, usa NATS core."""
+    if nats_client is None:
+        return
+    try:
+        if js:
             await js.publish(subject, jpg_bytes)
-        except Exception:
-            pass 
+            return
+    except Exception:
+        pass
+    try:
+        await nats_client.publish(subject, jpg_bytes)
+    except Exception:
+        pass
+
+
+def publish_camera_frame(head_img, subject):
+    """Encode JPEG and publish on the NATS camera subject from the teleop thread."""
+    global _last_camera_pub
+    if head_img is None or nats_loop is None or not nats_loop.is_running():
+        return
+    now = time.time()
+    if now - _last_camera_pub < 1.0 / CAMERA_PUB_HZ:
+        return
+    ok, buf = cv2.imencode(".jpg", head_img, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+    if not ok:
+        return
+    _last_camera_pub = now
+    asyncio.run_coroutine_threadsafe(_async_publish_video(buf.tobytes(), subject), nats_loop) 
 
 def handle_nats_command(command: str):
-    """Procesa comandos recibidos por NATS."""
-    global STOP, START, RECORD_TOGGLE
+    """Procesa comandos NATS: start, record, stop_record, quit."""
+    global STOP, START, RECORD_REQUEST
     if command == 'start':
-        print("\n>>> 📡 NATS: INICIANDO TELEOPERACIÓN <<<")
+        logger_mp.info("📡 NATS: INICIANDO TELEOPERACIÓN")
         START = True
-        print(">>> 🟢 TELEOPERACIÓN INICIADA\n")
-            
-    elif command == 'record' and START == True:
-        RECORD_TOGGLE = True
-            
-    elif command == 'stop_record':
-        RECORD_TOGGLE = True
-            
-    elif command == 'quit':
-        print("\n>>> 📡 NATS: CERRANDO... <<<")
+    elif command in ('record'):
+        if not START:
+            logger_mp.warning("📡 NATS record ignorado: la teleoperación no está en start")
+            return
+        if RECORD_RUNNING:
+            logger_mp.info("📡 NATS record ignorado: ya se está grabando")
+            return
+        logger_mp.info("📡 NATS: START grabación de episodio")
+        RECORD_REQUEST = "start"
+    elif command in ('stop_record'):
+        if not RECORD_RUNNING:
+            logger_mp.info("📡 NATS stop_record ignorado: no hay episodio en curso")
+            return
+        logger_mp.info("📡 NATS: STOP grabación de episodio")
+        RECORD_REQUEST = "stop"
+    elif command in ('quit'):
+        logger_mp.info("📡 NATS: CERRANDO TELEOPERACIÓN")
         START = False
         STOP = True
+    else:
+        logger_mp.warning(f"📡 NATS comando ignorado: {command!r} (START={START})")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -336,6 +380,7 @@ if __name__ == '__main__':
             dual_hand_action_array = Array('d', 12, lock = False)  # [output] current left, right hand action(12) data.
             hand_ctrl = Inspire_Controller_FTP(left_hand_pos_array, right_hand_pos_array, dual_hand_data_lock, dual_hand_state_array, dual_hand_action_array, simulation_mode=args.sim)
         elif args.ee == "inspire_ftp_sg":
+            from teleop.robot_control.robot_hand_inspire_senseglove import Inspire_Controller_SenseGlove
             dual_hand_data_lock = Lock()
             dual_hand_state_array = Array('d', 12, lock = False)   # [output] current left, right hand state(12) data.
             dual_hand_action_array = Array('d', 12, lock = False)  # [output] current left, right hand action(12) data.
@@ -428,10 +473,12 @@ if __name__ == '__main__':
             except Exception as e:
                 # Evita que el script se detenga si los primeros frames de tele_data vienen vacíos
                 pass
-            if camera_config['head_camera']['enable_zmq'] and xr_need_local_img:
+            if camera_config['head_camera']['enable_zmq'] and (xr_need_local_img or NATS_AVAILABLE):
                 head_img, _ = img_client.get_head_frame()
-                if head_img is not None:
+                if xr_need_local_img and head_img is not None:
                     tv_wrapper.render_to_xr(head_img)
+                if NATS_AVAILABLE:
+                    publish_camera_frame(head_img, subject_name)
 
         logger_mp.info("---------------------🚀start Tracking🚀-------------------------")
         arm_ctrl.speed_gradual_max()
@@ -445,10 +492,12 @@ if __name__ == '__main__':
             start_time = time.time()
             # get image
             if camera_config['head_camera']['enable_zmq']:
-                if args.record or xr_need_local_img:
+                if args.record or xr_need_local_img or NATS_AVAILABLE:
                     head_img, _ = img_client.get_head_frame()
                 if xr_need_local_img and head_img is not None:
                     tv_wrapper.render_to_xr(head_img)
+                if NATS_AVAILABLE:
+                    publish_camera_frame(head_img, subject_name)
             if camera_config['left_wrist_camera']['enable_zmq']:
                 if args.record:
                     left_wrist_img, _ = img_client.get_left_wrist_frame()
@@ -457,16 +506,25 @@ if __name__ == '__main__':
                     right_wrist_img, _ = img_client.get_right_wrist_frame()
 
             # record mode
-            if args.record and RECORD_TOGGLE:
+            if args.record:
+                req = RECORD_REQUEST
+                RECORD_REQUEST = None
+                toggle = RECORD_TOGGLE
                 RECORD_TOGGLE = False
-                if not RECORD_RUNNING:
+
+                start_rec = (req == "start") or (toggle and not RECORD_RUNNING)
+                stop_rec = (req == "stop") or (toggle and RECORD_RUNNING)
+
+                if start_rec and not RECORD_RUNNING:
                     if recorder.create_episode():
                         RECORD_RUNNING = True
+                        logger_mp.info("Episodio START")
                     else:
                         logger_mp.error("Failed to create episode. Recording not started.")
-                else:
+                elif stop_rec and RECORD_RUNNING:
                     RECORD_RUNNING = False
                     recorder.save_episode()
+                    logger_mp.info("Episodio STOP / guardado")
                     if args.sim:
                         publish_reset_category(1, reset_pose_publisher)
 
@@ -503,6 +561,7 @@ if __name__ == '__main__':
                 with right_gripper_value.get_lock():
                     right_gripper_value.value = tele_data.right_hand_pinchValue
             elif args.ee == "inspire_ftp_sg":
+                from teleop.robot_control.robot_hand_inspire_senseglove import apply_senseglove_mount_offset
                 left_wrist = apply_senseglove_mount_offset(left_wrist, is_right=False)
                 right_wrist = apply_senseglove_mount_offset(right_wrist)
                 #pass  # SenseGlove data arrives independently via ROS2
