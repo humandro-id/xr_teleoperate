@@ -103,6 +103,14 @@ class TeleopOrchestrator:
             logger.exception("Error al detener la teleoperación")
         finally:
             self.process = None
+        try:
+            subprocess.run(
+                ["sudo", "-n", "/unitree/sbin/mscli", "startservice", "video_hub_pc4"],
+                check=False,
+                timeout=10,
+            )
+        except Exception:
+            logger.exception("No se pudo reactivar video_hub_pc4")
         await self.publish_status("stopped")
 
     async def on_nats_message(self, msg):

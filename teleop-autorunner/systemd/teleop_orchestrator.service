@@ -5,10 +5,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=ubuntu
-EnvironmentFile=/etc/robot/robot.env
+User=unitree
+Group=unitree
+EnvironmentFile=-/etc/robot/robot.env
 WorkingDirectory=/opt/teleop_autorunner
-ExecStart=/usr/bin/python3 /opt/teleop_autorunner/orchestrator.py
+ExecStart=/opt/teleop_autorunner/scripts/start_orchestrator.sh
 Restart=on-failure
 RestartSec=3
 
