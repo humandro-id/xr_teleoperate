@@ -1,0 +1,2 @@
+# Allow the teleop orchestrator (no TTY) to toggle the Unitree camera hub.
+unitree ALL=(root) NOPASSWD: /unitree/sbin/mscli stopservice video_hub_pc4, /unitree/sbin/mscli startservice video_hub_pc4
