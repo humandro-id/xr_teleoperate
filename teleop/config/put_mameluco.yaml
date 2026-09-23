@@ -1,0 +1,42 @@
+# Cada paso mueve SOLO ese grupo a esos números. El resto se queda donde está.
+# hombros: [pitch, roll, yaw]
+# codos: un número
+# munecas: [roll, pitch, yaw]
+# manos: [thumb, thumb_aux, index, middle, ring, pinky]
+
+steps:
+
+  - name: hombros_arriba
+    move_time: 3.0
+    hombros:
+      left:  [1.3,  0.2, 0.0]
+      right: [1.3, -0.2, 0.0]
+  
+  - name: muñecas
+    move_time: 2.0
+    munecas:
+      left:  [0.0,  -1.0, 0.0] # roll, pitch, yaw
+      right: [0.0,  -1.0, 0.0] 
+  
+ 
+
+  #- name: flexionar_codos
+  #  move_time: 2.0
+  #  codos:
+  #    left: 0.2
+  #    right: 0.2
+
+  - name: hombros_otra_vez
+    move_time: 2.0
+    hombros:
+      left:  [0.0,  0.2, 0.0]
+      right: [0.0, -0.2, 0.0]
+
+  # 0 abierto, 1 cerrado. Un número = todos los dedos, o 6 valores:
+  # [thumb, thumb_aux, index, middle, ring, pinky]
+  - name: cerrar_manos
+    move_time: 1.5
+    manos:
+      left:  0.8
+      right: 0.8
+

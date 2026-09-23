@@ -1,0 +1,19 @@
+# Waypoint sequence for the PREGRASP scripted arm motion. ALL-ZERO
+# PLACEHOLDERS below -- replace each `q` with a real pose authored in
+# scripts/pose_slider.py (pose the arm, click "print pose", paste the
+# 26-dim array). Then export the interpolated trajectory with:
+#
+#   python scripts/export_pose_trajectory.py --rate 30 \
+#       --waypoints ros2_ws/src/g1_ypf_orchestrator/config/pose_sequences/bring_close_to_chest.yaml \
+#
+# `t` is absolute arrival time in seconds (first waypoint's t is typically 0,
+# its pose used as-is, not interpolated into). Order matters: e.g. elbows
+# back first so the hands don't sweep across the table on the way to the
+# pregrasp standoff pose.
+waypoints:
+  - name: hold
+    t: 0
+    q: [0.2138, 0.2898, 0.2190, -0.6922, -0.2992, 0.5646, -0.2684, 0.8020, 0.8020, 0.8020, 0.8020, 0.8020, 0.8020, 0.4188, -0.1335, -0.1300, -0.8562, -0.0632, 0.5986, 0.0156, 0.8020, 0.8020, 0.8020, 0.8020, 0.8020, 0.8020]
+  - name: chest
+    t: 1.5
+    q: [0.4738, 0.1335, 0.1300, -0.1302, 0.0632, -0.8654, -0.0156, 0.8050, 0.8050, 0.8050, 0.8050, 0.8050, 0.8050, 0.4738, -0.1335, -0.1300, -0.1302, -0.0632, -0.8654, 0.0156, 0.7990, 0.7990, 0.7990, 0.7990, 0.7990, 0.7990]
