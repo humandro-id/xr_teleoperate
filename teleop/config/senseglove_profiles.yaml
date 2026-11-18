@@ -1,0 +1,128 @@
+# Perfiles de configuración SenseGlove Nova 2 → Inspire (DFTP / FTP en G1).
+#
+# Uso:
+#   python teleop_hand_and_arm.py --ee inspire_ftp_sg --input-mode controller --sg-profile SG-002 --record
+#
+# - Cada perfil tiene un ID. Con --record, el perfil completo (ID, descripción,
+#   hash y todos los valores resueltos) se guarda en info.senseglove_profile
+#   del data.json de cada episodio.
+# - `base: <ID>` hereda de otro perfil; solo hace falta escribir lo que cambia.
+# - Lo que no se define toma el valor de SG-000 (DEFAULT_PROFILE en
+#   teleop/robot_control/senseglove_profile.py).
+# - No reutilices un ID para valores distintos: creá uno nuevo. Si igual lo
+#   editás, el params_hash guardado en el episodio va a cambiar.
+#
+# Claves disponibles (todas opcionales):
+#   description: texto libre
+#   gloves:         left_ns, right_ns         (namespace ROS2 de cada guante)
+#   mapping:
+#     finger_ranges: <finger>_<mcp|pip|dip>: [abierto, cerrado] en rad
+#     thumb:         yaw_invert {left, right}, adapt_inner_frac,
+#                    adapt_min_span, pitch_close_frac
+#   force_feedback: enabled, deadzone, max (unidades force_act 0-4096),
+#                   gain {thumb, index, middle, ring} (0 = desactiva ese freno)
+#   touch:          deadzone, max (unidades táctiles de la Inspire → nivel 0-100)
+#   vibration:      enabled, frequency_hz, pulse_s,
+#                   gain {thumb_tip, index_tip, palm_index, palm_pinky} (0 = desactiva ese motor)
+#                   Tacto Inspire → motor Nova 2: punta pulgar → thumb_tip,
+#                   punta índice → index_tip, palma lado índice → palm_index,
+#                   palma lado meñique → palm_pinky
+#   inspire:        force_set (0-3000), speed_set (0-1000), resend_s
+#                   Un número para los 6 motores o una lista de 6 en orden
+#                   [meñique, anular, medio, índice, flexión pulgar, rotación pulgar].
+#                   null = no se envía y la mano usa su valor de arranque
+#                   (DEFAULT_FORCE_SET / DEFAULT_SPEED_SET de su flash).
+#                   Cada dedo deja de cerrar cuando force_act llega a force_set.
+#   mount_offset:   left_euler_deg, right_euler_deg, pos
+#   timing:         bridge_rate_hz (mapeo + hápticos), control_fps (comandos Inspire)
+
+default_profile: SG-000
+
+profiles:
+
+  SG-000:
+    description: "Línea base: valores ajustados a mano (comportamiento original)"
+
+  SG-001:
+    base: SG-000
+    description: "FFB suave: los frenos empiezan más tarde y saturan con más fuerza"
+    force_feedback:
+      deadzone: 300
+      max: 4000
+
+  SG-002:
+    base: SG-000
+    description: "FFB sensible: frenos con contacto leve, saturan antes"
+    force_feedback:
+      deadzone: 100
+      max: 2000
+
+  SG-003:
+    base: SG-000
+    description: "Sin force feedback (control para comparar)"
+    force_feedback:
+      enabled: false
+
+  SG-004:
+    base: SG-000
+    description: "Pulgar más sensible: pitch y yaw saturan antes"
+    mapping:
+      thumb:
+        adapt_inner_frac: 0.18
+        pitch_close_frac: 0.35
+
+  SG-005:
+    base: SG-000
+    description: "Dedos largos más sensibles: cierran del todo con ~80% del recorrido"
+    mapping:
+      finger_ranges:
+        index_mcp:  [0.0, 0.96]
+        index_pip:  [0.0, 1.28]
+        index_dip:  [0.0, 1.2]
+        middle_mcp: [0.0, 0.88]
+        middle_pip: [0.0, 1.28]
+        middle_dip: [0.0, 1.12]
+        ring_mcp:   [0.0, 0.8]
+        ring_pip:   [0.0, 1.2]
+        ring_dip:   [0.0, 1.04]
+        pinky_mcp:  [0.0, 0.8]
+        pinky_pip:  [0.0, 1.2]
+        pinky_dip:  [0.0, 1.2]
+
+  SG-006:
+    base: SG-004
+    description: "Combinación: pulgar sensible (SG-004) + FFB sensible"
+    force_feedback:
+      deadzone: 100
+      max: 2000
+
+  SG-007:
+    base: SG-000
+    description: "Sin vibración por tacto (control para comparar)"
+    vibration:
+      enabled: false
+
+  SG-008:
+    base: SG-000
+    description: "Vibración sensible: contacto leve ya vibra, satura antes"
+    touch:
+      deadzone: 20
+      max: 1500
+
+  SG-009:
+    base: SG-000
+    description: "Agarre suave: la Inspire deja de cerrar con poca fuerza"
+    inspire:
+      force_set: 500
+
+  SG-010:
+    base: SG-000
+    description: "Agarre firme: la Inspire aprieta más antes de parar"
+    inspire:
+      force_set: 1500
+
+  SG-011:
+    base: SG-000
+    description: "Inspire más lenta: movimientos suaves, menos golpe al contacto"
+    inspire:
+      speed_set: 500

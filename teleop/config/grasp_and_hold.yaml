@@ -1,0 +1,17 @@
+# Waypoints 26-DOF: [left_arm(7), left_hand(6), right_arm(7), right_hand(6)]
+# t = tiempo absoluto de llegada (s). El primero (t=0) es la pose de partida
+# de la secuencia; se interpola desde la pose actual del robot hasta ahí.
+#
+# left/right arm: [shoulder_pitch, roll, yaw, elbow, wrist_roll, pitch, yaw]
+# hands BrainCo:  [thumb, thumb_aux, index, middle, ring, pinky]  0=abierta 1=cerrada
+
+waypoints:
+  - name: start
+    t: 0.0
+    q: [0.1108, 0.1878, 0.0000, 1.2778, -0.0002, -0.0004, -0.0004, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.1108, -0.1878, -0.0000, 1.2778, 0.0002, -0.0004, 0.0004, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000]
+  - name: pregrasp
+    t: 1.5
+    q: [0.2138, 0.2898, 0.2190, -0.6922, -0.2992, 0.5646, -0.2684, 0.2280, 0.2280, 0.2280, 0.2280, 0.2280, 0.2280, 0.4188, -0.1335, -0.1300, -0.8562, -0.0632, 0.5986, 0.0156, 0.2280, 0.2280, 0.2280, 0.2280, 0.2280, 0.2280]
+  - name: hold
+    t: 3.0
+    q: [0.2138, 0.2898, 0.2190, -0.6922, -0.2992, 0.5646, -0.2684, 0.6790, 0.2170, 0.3580, 0.6770, 0.9100, 1.0000, 0.4188, -0.1335, -0.1300, -0.8562, -0.0632, 0.5986, 0.0156, 0.6570, 0.3180, 0.4160, 0.6860, 0.9990, 0.9990]

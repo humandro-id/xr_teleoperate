@@ -77,8 +77,10 @@ if __name__ == '__main__':
     parser.add_argument('--display-mode', type=str, choices=['immersive', 'ego', 'pass-through'], default='immersive', help='Select XR device display mode')
     parser.add_argument('--arm', type=str, choices=['G1_29', 'G1_23', 'H1_2', 'H1'], default='G1_29', help='Select arm controller')
     parser.add_argument('--ee', type=str, choices=['dex1', 'dex3', 'inspire_ftp', 'inspire_dfx', 'inspire_ftp_sg', 'brainco'], help='Select end effector controller')
-    parser.add_argument('--left-glove-topic', type=str, default='/senseglove/glove00801/lh/joint_states', help='ROS2 topic for left SenseGlove joint_states')
-    parser.add_argument('--right-glove-topic', type=str, default='/senseglove/glove00804/rh/joint_states', help='ROS2 topic for right SenseGlove joint_states')
+    parser.add_argument('--sg-profile', type=str, default=None, help='SenseGlove configuration profile ID (e.g. SG-002). Defaults to default_profile in the profiles file')
+    parser.add_argument('--sg-profiles-file', type=str, default=None, help='SenseGlove profiles YAML. Defaults to teleop/config/senseglove_profiles.yaml')
+    parser.add_argument('--left-glove-topic', type=str, default=None, help='Override the profile\'s left SenseGlove joint_states topic (haptics use the same namespace)')
+    parser.add_argument('--right-glove-topic', type=str, default=None, help='Override the profile\'s right SenseGlove joint_states topic (haptics use the same namespace)')
     parser.add_argument('--img-server-ip', type=str, default='192.168.123.164', help='IP address of image server, used by teleimager and televuer')
     parser.add_argument('--network-interface', type=str, default=None, help='Network interface for dds communication, e.g., eth0, wlan0. If None, use default interface.')
     # mode flags
@@ -97,6 +99,17 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     logger_mp.debug(f"args: {args}")
+
+    sg_profile = None
+    if args.ee == "inspire_ftp_sg":
+        from teleop.robot_control.senseglove_profile import load_profile, DEFAULT_PROFILES_FILE
+        sg_profile = load_profile(args.sg_profile, args.sg_profiles_file or DEFAULT_PROFILES_FILE)
+        sg_profile = sg_profile.with_glove_ns(
+            left_ns=args.left_glove_topic.rsplit('/joint_states', 1)[0] if args.left_glove_topic else None,
+            right_ns=args.right_glove_topic.rsplit('/joint_states', 1)[0] if args.right_glove_topic else None,
+        )
+        logger_mp.info(f"SenseGlove profile: {sg_profile.id} - {sg_profile.description}")
+
 
     try:
         # setup dds communication domains id
@@ -210,8 +223,7 @@ if __name__ == '__main__':
                 dual_hand_state_array=dual_hand_state_array,
                 dual_hand_action_array=dual_hand_action_array,
                 simulation_mode=args.sim,
-                left_glove_topic=args.left_glove_topic,
-                right_glove_topic=args.right_glove_topic,
+                profile=sg_profile,
             )
         elif args.ee == "brainco" and args.input_mode == "hand":
             left_hand_pos_array = Array('d', 75, lock = True)      # [input]
@@ -268,6 +280,8 @@ if __name__ == '__main__':
                                      task_steps = args.task_steps,
                                      frequency = args.frequency, 
                                      rerun_log = False)
+            if sg_profile is not None:
+                recorder.info["senseglove_profile"] = sg_profile.to_info()
 
         logger_mp.info("----------------------------------------------------------------")
         logger_mp.info("🟢  Press [r] to start syncing the robot with your movements.")
