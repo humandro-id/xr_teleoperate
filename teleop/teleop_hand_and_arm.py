@@ -292,9 +292,10 @@ if __name__ == '__main__':
                 # Evita que el script se detenga si los primeros frames de tele_data vienen vacíos
                 pass
             if camera_config['head_camera']['enable_zmq'] and xr_need_local_img:
-                head_img = img_client.get_head_frame()
-                if head_img.bgr is not None:
-                    tv_wrapper.render_to_xr(head_img.bgr)
+                head_img, _ = img_client.get_head_frame()
+                # if head_img.bgr is not None:
+                #    tv_wrapper.render_to_xr(head_img.bgr)
+                tv_wrapper.render_to_xr(head_img)
 
         logger_mp.info("---------------------🚀start Tracking🚀-------------------------")
         arm_ctrl.speed_gradual_max()
@@ -309,9 +310,9 @@ if __name__ == '__main__':
             # get image
             if camera_config['head_camera']['enable_zmq']:
                 if args.record or xr_need_local_img:
-                    head_img = img_client.get_head_frame()
-                if xr_need_local_img and head_img.bgr is not None:
-                    tv_wrapper.render_to_xr(head_img.bgr)
+                    head_img, _ = img_client.get_head_frame()
+                # if xr_need_local_img and head_img.bgr is not None:
+                #     tv_wrapper.render_to_xr(head_img.bgr)
             if camera_config['left_wrist_camera']['enable_zmq']:
                 if args.record:
                     left_wrist_img = img_client.get_left_wrist_frame()
@@ -461,8 +462,10 @@ if __name__ == '__main__':
                     colors = {}
                     depths = {}
                     color_idx = 0
-                    if head_img is not None and head_img.bgr is not None:
-                        head_bgr = head_img.bgr
+                    #if head_img is not None and head_img.bgr is not None:
+                    if head_img is not None:
+                        #head_bgr = head_img.bgr
+                        head_bgr = head_img
                         head_mono_w = camera_config['head_camera']['image_shape'][1] // 2
                         # RealSense head stream may still be side-by-side stereo over ZMQ.
                         if head_bgr.shape[1] >= 2 * head_mono_w:
